@@ -17,6 +17,9 @@ class FlagProductController extends Controller
     /**
      * Display a listing of flag products.
      */
+    /**
+     * Display a listing of flag products.
+     */
     public function index(Request $request)
     {
         $query = FlagProduct::with(['flagType', 'flagSize']);
@@ -28,6 +31,13 @@ class FlagProductController extends Controller
                 $q->where('name', 'like', "%{$search}%");
             })->orWhereHas('flagSize', function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%");
+            });
+        }
+
+        // Category filter (filter by flag type category)
+        if ($request->filled('category')) {
+            $query->whereHas('flagType', function ($q) use ($request) {
+                $q->where('category', $request->category);
             });
         }
 
@@ -61,25 +71,41 @@ class FlagProductController extends Controller
             }
         }
 
+        // Quick filter
+        if ($request->filled('filter')) {
+            switch ($request->filter) {
+                case 'low_inventory':
+                    $query->whereRaw('current_inventory <= low_inventory_threshold');
+                    break;
+                case 'out_of_stock':
+                    $query->where('current_inventory', 0);
+                    break;
+            }
+        }
+
         $flagProducts = $query->orderBy('flag_type_id')->orderBy('flag_size_id')->paginate(20);
 
         // Get filter options
         $flagTypes = FlagType::active()->orderBy('name')->get();
         $flagSizes = FlagSize::active()->orderBy('name')->get();
+        
+        // Get categories from flag types
+        $categories = FlagType::distinct()->pluck('category')->filter()->sort()->values();
 
         // Get statistics
         $stats = [
             'total_products' => FlagProduct::count(),
-            'active_products' => FlagProduct::active()->count(),
+            'active_products' => FlagProduct::where('active', true)->count(),
             'low_inventory' => FlagProduct::whereRaw('current_inventory <= low_inventory_threshold')->count(),
             'out_of_stock' => FlagProduct::where('current_inventory', 0)->count(),
-            'total_inventory_value' => FlagProduct::selectRaw('SUM(current_inventory * cost_per_unit)')->value('SUM(current_inventory * cost_per_unit)') / 100,
+            'total_inventory_value' => FlagProduct::selectRaw('SUM(current_inventory * cost_per_unit) as total')->value('total') / 100 ?? 0,
         ];
 
         return view('admin.flag-products.index', compact(
             'flagProducts',
             'flagTypes',
             'flagSizes',
+            'categories',
             'stats'
         ));
     }

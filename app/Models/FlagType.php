@@ -18,8 +18,11 @@ class FlagType extends Model
         'slug',
         'description',
         'image_url',
+        'image_path',
+        'design_file_path',
         'category',
         'active',
+        'featured',
         'sort_order',
     ];
 
@@ -28,6 +31,7 @@ class FlagType extends Model
      */
     protected $casts = [
         'active' => 'boolean',
+        'featured' => 'boolean',
     ];
 
     // Relationships
@@ -41,7 +45,23 @@ class FlagType extends Model
     }
 
     /**
+     * Get all flag products for this flag type (alias for products).
+     */
+    public function flagProducts()
+    {
+        return $this->hasMany(FlagProduct::class);
+    }
+
+    /**
      * Get active products for this flag type.
+     */
+    public function activeProducts()
+    {
+        return $this->hasMany(FlagProduct::class)->where('active', true);
+    }
+
+    /**
+     * Get available products for this flag type.
      */
     public function availableProducts()
     {
@@ -67,6 +87,14 @@ class FlagType extends Model
     public function scopeActive($query)
     {
         return $query->where('active', true);
+    }
+
+    /**
+     * Scope to get only featured flag types.
+     */
+    public function scopeFeatured($query)
+    {
+        return $query->where('featured', true);
     }
 
     /**
@@ -103,6 +131,14 @@ class FlagType extends Model
         return self::active()->byCategory('military')->ordered()->get();
     }
 
+    /**
+     * Get all categories.
+     */
+    public static function getCategories()
+    {
+        return self::distinct()->pluck('category')->filter()->sort()->values();
+    }
+
     // Helper methods
 
     /**
@@ -124,8 +160,48 @@ class FlagType extends Model
     /**
      * Get the flag image URL with fallback.
      */
-    public function getImageUrlAttribute($value)
+    public function getImageAttribute()
     {
-        return $value ?: asset('images/flags/default-flag.jpg');
+        if ($this->image_path) {
+            return asset('storage/' . $this->image_path);
+        }
+        if ($this->image_url) {
+            return $this->image_url;
+        }
+        return asset('images/flags/default-flag.jpg');
+    }
+
+    /**
+     * Get total product count.
+     */
+    public function getTotalProductsAttribute()
+    {
+        return $this->flagProducts()->count();
+    }
+
+    /**
+     * Get active product count.
+     */
+    public function getActiveProductsCountAttribute()
+    {
+        return $this->flagProducts()->where('active', true)->count();
+    }
+
+    /**
+     * Get total inventory across all products.
+     */
+    public function getTotalInventoryAttribute()
+    {
+        return $this->flagProducts()->sum('current_inventory');
+    }
+
+    /**
+     * Check if has low inventory products.
+     */
+    public function hasLowInventory()
+    {
+        return $this->flagProducts()
+            ->whereRaw('current_inventory <= low_inventory_threshold')
+            ->exists();
     }
 }
