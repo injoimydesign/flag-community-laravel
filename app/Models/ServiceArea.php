@@ -128,4 +128,3 @@ class ServiceArea extends Model
             })
             ->orWhereIn('zip_code', $this->zip_codes ?? []);
     }
-}

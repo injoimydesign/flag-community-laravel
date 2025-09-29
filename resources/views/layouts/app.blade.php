@@ -6,51 +6,16 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>@yield('title', 'Flags Across Our Community')</title>
-    
-    <!-- In your layout head section -->
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Google Fonts -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700" rel="stylesheet" />
-    
-    <!-- Custom Tailwind Config -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        flag: {
-                            red: '#B91C1C',
-                            blue: '#1E40AF',
-                            navy: '#1E3A8A',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-                    }
-                }
-            }
-        }
-    </script>
 
-    <!-- Fonts 
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700" rel="stylesheet" /> -->
-
-    <!-- Scripts
-    @vite(['resources/css/app.css', 'resources/js/app.js'])  -->
+    <!-- Scripts -->
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
     
     <!-- Additional Styles -->
-   <!-- @stack('styles') -->
+    @stack('styles')
 </head>
 <body class="font-sans antialiased bg-gray-50">
     <!-- Navigation -->

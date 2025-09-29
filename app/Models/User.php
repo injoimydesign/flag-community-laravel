@@ -17,7 +17,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'first_name',
-        'last_name', 
+        'last_name',
         'email',
         'password',
         'phone',
@@ -57,15 +57,17 @@ class User extends Authenticatable
      */
     public function subscriptions()
     {
-        return $this->hasMany(Subscription::class);
+        return $this->hasMany(\App\Models\Subscription::class);
     }
+
+
 
     /**
      * Get the active subscription for this user.
      */
-    public function activeSubscription()
+    public function activeSubscriptions()
     {
-        return $this->hasOne(Subscription::class)->where('status', 'active');
+        return $this->hasMany(\App\Models\Subscription::class)->where('status', 'active');
     }
 
     /**
@@ -91,31 +93,7 @@ class User extends Authenticatable
      */
     public function getFullNameAttribute()
     {
-        return "{$this->first_name} {$this->last_name}";
-    }
-
-    /**
-     * Check if user is an admin.
-     */
-    public function isAdmin()
-    {
-        return $this->role === 'admin';
-    }
-
-    /**
-     * Check if user is a customer.
-     */
-    public function isCustomer()
-    {
-        return $this->role === 'customer';
-    }
-
-    /**
-     * Get the user's full address.
-     */
-    public function getFullAddressAttribute()
-    {
-        return "{$this->address}, {$this->city}, {$this->state} {$this->zip_code}";
+        return trim("{$this->first_name} {$this->last_name}");
     }
 
     /**
@@ -136,4 +114,60 @@ class User extends Authenticatable
             'lng' => (float) $this->longitude
         ];
     }
+
+
+
+      /**
+       * Check if user is an admin.
+       */
+      public function isAdmin(): bool
+      {
+          return $this->role === 'admin';
+      }
+
+      /**
+       * Check if user is a customer.
+       */
+      public function isCustomer(): bool
+      {
+          return $this->role === 'customer';
+      }
+
+    
+      /**
+       * Get the user's full address.
+       */
+      public function getFullAddressAttribute(): string
+      {
+          return "{$this->address}, {$this->city}, {$this->state} {$this->zip_code}";
+      }
+
+      /**
+       * Scope to get only admin users.
+       */
+      public function scopeAdmins($query)
+      {
+          return $query->where('role', 'admin');
+      }
+
+      /**
+       * Scope to get only customer users.
+       */
+      public function scopeCustomers($query)
+      {
+          return $query->where('role', 'customer');
+      }
+
+      /**
+       * Check service area coverage for this user.
+       */
+      public function checkServiceAreaCoverage(): bool
+      {
+          // This would integrate with your ServiceArea model
+          // For now, return true if latitude/longitude exist
+          $this->in_service_area = !is_null($this->latitude) && !is_null($this->longitude);
+          $this->save();
+
+          return $this->in_service_area;
+      }
 }

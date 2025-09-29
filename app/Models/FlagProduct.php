@@ -78,13 +78,6 @@ class FlagProduct extends Model
         return $query->where('active', true);
     }
 
-    /**
-     * Scope to get products with low inventory.
-     */
-    public function scopeLowInventory($query)
-    {
-        return $query->whereColumn('inventory_count', '<=', 'min_inventory_alert');
-    }
 
     /**
      * Scope to get products by category.
@@ -130,21 +123,6 @@ class FlagProduct extends Model
         return $this->inventory_count > 0;
     }
 
-    /**
-     * Get formatted one-time price.
-     */
-    public function getFormattedOneTimePriceAttribute()
-    {
-        return '$' . number_format($this->one_time_price, 2);
-    }
-
-    /**
-     * Get formatted annual subscription price.
-     */
-    public function getFormattedAnnualPriceAttribute()
-    {
-        return '$' . number_format($this->annual_subscription_price, 2);
-    }
 
     /**
      * Get savings amount for annual subscription.
@@ -164,20 +142,152 @@ class FlagProduct extends Model
         return '$' . number_format($this->annual_savings, 2);
     }
 
-    /**
-     * Update inventory count.
-     */
-    public function adjustInventory($quantity, $reason = null)
-    {
-        $this->inventory_count += $quantity;
-        $this->save();
 
-        // Log inventory change if needed
-        // InventoryLog::create([
-        //     'flag_product_id' => $this->id,
-        //     'quantity_change' => $quantity,
-        //     'reason' => $reason,
-        //     'new_count' => $this->inventory_count
-        // ]);
+/**
+ * Get inventory adjustments for this product.
+ */
+public function inventoryAdjustments()
+{
+    return $this->hasMany(InventoryAdjustment::class);
+}
+
+/**
+ * Scope for low inventory products.
+ */
+public function scopeLowInventory($query)
+{
+    return $query->whereRaw('current_inventory <= low_inventory_threshold');
+}
+
+/**
+ * Check if product is low on inventory.
+ */
+public function isLowInventory(): bool
+{
+    return $this->current_inventory <= $this->low_inventory_threshold;
+}
+
+/**
+ * Check if product is out of stock.
+ */
+public function isOutOfStock(): bool
+{
+    return $this->current_inventory <= 0;
+}
+
+/**
+ * Get formatted one-time price.
+ */
+public function getFormattedOneTimePriceAttribute(): string
+{
+    return '$' . number_format($this->one_time_price / 100, 2);
+}
+
+/**
+ * Get formatted annual subscription price.
+ */
+public function getFormattedAnnualPriceAttribute(): string
+{
+    return '$' . number_format($this->annual_subscription_price / 100, 2);
+}
+
+/**
+ * Get formatted cost per unit.
+ */
+public function getFormattedCostPerUnitAttribute(): string
+{
+    return '$' . number_format($this->cost_per_unit / 100, 2);
+}
+
+/**
+ * Get inventory value.
+ */
+public function getInventoryValueAttribute(): float
+{
+    return ($this->current_inventory * $this->cost_per_unit) / 100;
+}
+
+/**
+ * Get active subscription count for this product.
+ */
+public function getActiveSubscriptionCount(): int
+{
+    return $this->subscriptionItems()
+        ->whereHas('subscription', function ($query) {
+            $query->where('status', 'active');
+        })
+        ->count();
+}
+
+/**
+ * Get total placement count for this product.
+ */
+public function getTotalPlacementCount(): int
+{
+    return FlagPlacement::where('flag_product_id', $this->id)
+        ->where('status', 'placed')
+        ->count();
+}
+
+/**
+ * Get monthly usage for this product.
+ */
+public function getMonthlyUsage(): int
+{
+    return FlagPlacement::where('flag_product_id', $this->id)
+        ->whereMonth('placement_date', Carbon::now()->month)
+        ->whereYear('placement_date', Carbon::now()->year)
+        ->count();
+}
+
+/**
+ * Adjust inventory and log the change.
+ */
+public function adjustInventory(int $quantity, string $type, string $reason, int $adjustedBy = null): bool
+{
+    $previousInventory = $this->current_inventory;
+
+    switch ($type) {
+        case 'increase':
+            $newInventory = $previousInventory + $quantity;
+            break;
+        case 'decrease':
+            $newInventory = max(0, $previousInventory - $quantity);
+            break;
+        case 'set':
+            $newInventory = $quantity;
+            $quantity = $quantity - $previousInventory; // Actual change
+            break;
+        default:
+            return false;
     }
+
+    // Update inventory
+    $this->update(['current_inventory' => $newInventory]);
+
+    // Log adjustment
+    InventoryAdjustment::create([
+        'flag_product_id' => $this->id,
+        'adjustment_type' => $type,
+        'quantity' => $quantity,
+        'previous_inventory' => $previousInventory,
+        'new_inventory' => $newInventory,
+        'reason' => $reason,
+        'adjusted_by' => $adjustedBy ?: auth()->id(),
+    ]);
+
+    return true;
+}
+
+/**
+ * Use inventory for flag placement.
+ */
+public function useForPlacement(int $quantity = 1, string $reason = 'Used for flag placement'): bool
+{
+    if ($this->current_inventory < $quantity) {
+        return false; // Not enough inventory
+    }
+
+    return $this->adjustInventory($quantity, 'decrease', $reason);
+}
 }

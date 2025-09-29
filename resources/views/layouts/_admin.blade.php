@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>@yield('title', 'Flags Across Our Community')</title>
+    <title>@yield('title', 'Admin Dashboard - Flags Across Our Community')</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -16,9 +16,12 @@
     
     <!-- Additional Styles -->
     @stack('styles')
+
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="font-sans antialiased bg-gray-50">
-     <div class="flex h-screen" x-data="{ sidebarOpen: false }">
+    <div class="flex h-screen" x-data="{ sidebarOpen: false }">
         <!-- Mobile sidebar overlay -->
         <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 md:hidden">
             <div x-show="sidebarOpen" 
@@ -198,11 +201,12 @@
         </div>
     </div>
 
-
     <!-- Additional Scripts -->
     @stack('scripts')
     
-    <!-- Alpine.js Mobile Menu -->
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('app', () => ({

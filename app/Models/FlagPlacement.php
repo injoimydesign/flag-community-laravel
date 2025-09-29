@@ -11,9 +11,6 @@ class FlagPlacement extends Model
 {
     use HasFactory;
 
-    /**
-     * The attributes that are mass assignable.
-     */
     protected $fillable = [
         'subscription_id',
         'holiday_id',
@@ -21,27 +18,25 @@ class FlagPlacement extends Model
         'placement_date',
         'removal_date',
         'status',
-        'placed_by_user_id',
-        'removed_by_user_id',
         'placed_at',
         'removed_at',
+        'skipped_at',
         'notes',
+        'skip_reason',
+        'placed_by',
+        'removed_by',
     ];
 
-    /**
-     * The attributes that should be cast.
-     */
     protected $casts = [
         'placement_date' => 'date',
         'removal_date' => 'date',
         'placed_at' => 'datetime',
         'removed_at' => 'datetime',
+        'skipped_at' => 'datetime',
     ];
 
-    // Relationships
-
     /**
-     * Get the subscription for this placement.
+     * Get the subscription that owns the placement.
      */
     public function subscription()
     {
@@ -69,7 +64,7 @@ class FlagPlacement extends Model
      */
     public function placedByUser()
     {
-        return $this->belongsTo(User::class, 'placed_by_user_id');
+        return $this->belongsTo(User::class, 'placed_by');
     }
 
     /**
@@ -77,29 +72,11 @@ class FlagPlacement extends Model
      */
     public function removedByUser()
     {
-        return $this->belongsTo(User::class, 'removed_by_user_id');
+        return $this->belongsTo(User::class, 'removed_by');
     }
 
     /**
-     * Get the customer for this placement.
-     */
-    public function customer()
-    {
-        return $this->hasOneThrough(User::class, Subscription::class, 'id', 'id', 'subscription_id', 'user_id');
-    }
-
-    // Scopes
-
-    /**
-     * Scope to get placements by status.
-     */
-    public function scopeByStatus($query, $status)
-    {
-        return $query->where('status', $status);
-    }
-
-    /**
-     * Scope to get scheduled placements.
+     * Scope for scheduled placements.
      */
     public function scopeScheduled($query)
     {
@@ -107,7 +84,7 @@ class FlagPlacement extends Model
     }
 
     /**
-     * Scope to get placed flags.
+     * Scope for placed flags.
      */
     public function scopePlaced($query)
     {
@@ -115,7 +92,7 @@ class FlagPlacement extends Model
     }
 
     /**
-     * Scope to get removed flags.
+     * Scope for removed flags.
      */
     public function scopeRemoved($query)
     {
@@ -123,241 +100,202 @@ class FlagPlacement extends Model
     }
 
     /**
-     * Scope to get placements for a specific date.
+     * Scope for skipped placements.
      */
-    public function scopeForDate($query, $date)
+    public function scopeSkipped($query)
     {
-        return $query->where('placement_date', $date);
+        return $query->where('status', 'skipped');
     }
 
     /**
-     * Scope to get placements between dates.
+     * Scope for overdue placements.
      */
-    public function scopeBetweenDates($query, $startDate, $endDate)
+    public function scopeOverdue($query)
     {
-        return $query->whereBetween('placement_date', [$startDate, $endDate]);
+        return $query->where('status', 'scheduled')
+                    ->where('placement_date', '<', Carbon::now());
     }
 
     /**
-     * Scope to get placements due for placement today.
+     * Scope for upcoming placements.
      */
-    public function scopeDueForPlacementToday($query)
+    public function scopeUpcoming($query, int $days = 7)
     {
-        return $query->scheduled()
-            ->where('placement_date', Carbon::today());
+        return $query->where('status', 'scheduled')
+                    ->whereBetween('placement_date', [
+                        Carbon::now(),
+                        Carbon::now()->addDays($days)
+                    ]);
     }
 
     /**
-     * Scope to get placements due for removal today.
+     * Check if placement is overdue.
      */
-    public function scopeDueForRemovalToday($query)
+    public function isOverdue(): bool
     {
-        return $query->placed()
-            ->where('removal_date', Carbon::today());
+        return $this->status === 'scheduled' && 
+               $this->placement_date->isPast();
     }
 
     /**
-     * Scope to get overdue placements.
+     * Check if placement is due today.
      */
-    public function scopeOverduePlacement($query)
+    public function isDueToday(): bool
     {
-        return $query->scheduled()
-            ->where('placement_date', '<', Carbon::today());
+        return $this->status === 'scheduled' && 
+               $this->placement_date->isToday();
     }
 
     /**
-     * Scope to get overdue removals.
+     * Check if placement is upcoming.
      */
-    public function scopeOverdueRemoval($query)
+    public function isUpcoming(int $days = 7): bool
     {
-        return $query->placed()
-            ->where('removal_date', '<', Carbon::today());
-    }
-
-    // Helper methods
-
-    /**
-     * Check if placement is scheduled.
-     */
-    public function isScheduled()
-    {
-        return $this->status === 'scheduled';
+        return $this->status === 'scheduled' && 
+               $this->placement_date->isFuture() &&
+               $this->placement_date->diffInDays(Carbon::now()) <= $days;
     }
 
     /**
-     * Check if flag is currently placed.
+     * Get status color for UI.
      */
-    public function isPlaced()
+    public function getStatusColorAttribute(): string
     {
-        return $this->status === 'placed';
+        return match($this->status) {
+            'scheduled' => $this->isOverdue() ? 'red' : ($this->isDueToday() ? 'yellow' : 'blue'),
+            'placed' => 'green',
+            'removed' => 'gray',
+            'skipped' => 'orange',
+            default => 'gray',
+        };
     }
 
     /**
-     * Check if flag has been removed.
+     * Get formatted status for display.
      */
-    public function isRemoved()
+    public function getFormattedStatusAttribute(): string
     {
-        return $this->status === 'removed';
-    }
-
-    /**
-     * Check if placement was skipped.
-     */
-    public function isSkipped()
-    {
-        return $this->status === 'skipped';
-    }
-
-    /**
-     * Check if placement is overdue for placement.
-     */
-    public function isOverduePlacement()
-    {
-        return $this->isScheduled() && $this->placement_date < Carbon::today();
-    }
-
-    /**
-     * Check if placement is overdue for removal.
-     */
-    public function isOverdueRemoval()
-    {
-        return $this->isPlaced() && $this->removal_date < Carbon::today();
-    }
-
-    /**
-     * Get status display name.
-     */
-    public function getStatusDisplayAttribute()
-    {
-        return ucfirst($this->status);
-    }
-
-    /**
-     * Get status with color class for UI.
-     */
-    public function getStatusColorAttribute()
-    {
-        return [
-            'scheduled' => 'text-blue-600',
-            'placed' => 'text-green-600',
-            'removed' => 'text-gray-600',
-            'skipped' => 'text-yellow-600',
-        ][$this->status] ?? 'text-gray-600';
-    }
-
-    /**
-     * Mark flag as placed.
-     */
-    public function markAsPlaced($userId = null, $notes = null)
-    {
-        $this->status = 'placed';
-        $this->placed_by_user_id = $userId;
-        $this->placed_at = Carbon::now();
+        $status = ucfirst($this->status);
         
-        if ($notes) {
-            $this->notes = $notes;
+        if ($this->status === 'scheduled' && $this->isOverdue()) {
+            $status .= ' (Overdue)';
+        } elseif ($this->status === 'scheduled' && $this->isDueToday()) {
+            $status .= ' (Due Today)';
         }
         
-        $this->save();
-
-        // Update inventory
-        $this->flagProduct->adjustInventory(-1, 'Flag placed for placement #' . $this->id);
-
-        // Send notification to customer
-        $this->sendPlacementNotification();
+        return $status;
     }
 
     /**
-     * Mark flag as removed.
+     * Get days until placement.
      */
-    public function markAsRemoved($userId = null, $notes = null)
-    {
-        $this->status = 'removed';
-        $this->removed_by_user_id = $userId;
-        $this->removed_at = Carbon::now();
-        
-        if ($notes) {
-            $this->notes = ($this->notes ? $this->notes . ' | ' : '') . $notes;
-        }
-        
-        $this->save();
-
-        // Update inventory
-        $this->flagProduct->adjustInventory(1, 'Flag removed from placement #' . $this->id);
-
-        // Send notification to customer
-        $this->sendRemovalNotification();
-    }
-
-    /**
-     * Mark placement as skipped.
-     */
-    public function markAsSkipped($reason = null)
-    {
-        $this->status = 'skipped';
-        
-        if ($reason) {
-            $this->notes = ($this->notes ? $this->notes . ' | ' : '') . 'Skipped: ' . $reason;
-        }
-        
-        $this->save();
-    }
-
-    /**
-     * Send placement notification to customer.
-     */
-    private function sendPlacementNotification()
-    {
-        $customer = $this->subscription->user;
-        $subject = "Your {$this->holiday->name} flag has been placed!";
-        $message = "We've placed your {$this->flagProduct->display_name} for {$this->holiday->name}. It will be removed on {$this->removal_date->format('F j, Y')}.";
-
-        Notification::create([
-            'user_id' => $customer->id,
-            'type' => 'email',
-            'subject' => $subject,
-            'message' => $message,
-            'metadata' => [
-                'placement_id' => $this->id,
-                'type' => 'flag_placed'
-            ]
-        ]);
-    }
-
-    /**
-     * Send removal notification to customer.
-     */
-    private function sendRemovalNotification()
-    {
-        $customer = $this->subscription->user;
-        $subject = "Your {$this->holiday->name} flag has been removed";
-        $message = "We've removed your {$this->flagProduct->display_name} from {$this->holiday->name}. Thank you for displaying our flag!";
-
-        Notification::create([
-            'user_id' => $customer->id,
-            'type' => 'email',
-            'subject' => $subject,
-            'message' => $message,
-            'metadata' => [
-                'placement_id' => $this->id,
-                'type' => 'flag_removed'
-            ]
-        ]);
-    }
-
-    /**
-     * Get days until placement date.
-     */
-    public function getDaysUntilPlacementAttribute()
+    public function getDaysUntilPlacement(): int
     {
         return Carbon::now()->diffInDays($this->placement_date, false);
     }
 
     /**
-     * Get days until removal date.
+     * Get days since placement.
      */
-    public function getDaysUntilRemovalAttribute()
+    public function getDaysSincePlacement(): int
     {
-        return Carbon::now()->diffInDays($this->removal_date, false);
+        if (!$this->placed_at) {
+            return 0;
+        }
+        
+        return $this->placed_at->diffInDays(Carbon::now());
+    }
+
+    /**
+     * Mark placement as placed.
+     */
+    public function markAsPlaced(int $placedBy = null, string $notes = null): bool
+    {
+        if ($this->status !== 'scheduled') {
+            return false;
+        }
+
+        $this->update([
+            'status' => 'placed',
+            'placed_at' => Carbon::now(),
+            'placed_by' => $placedBy ?: auth()->id(),
+            'notes' => $notes ? ($this->notes ? $this->notes . "\n" . $notes : $notes) : $this->notes,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Mark placement as removed.
+     */
+    public function markAsRemoved(int $removedBy = null, string $notes = null): bool
+    {
+        if ($this->status !== 'placed') {
+            return false;
+        }
+
+        $this->update([
+            'status' => 'removed',
+            'removed_at' => Carbon::now(),
+            'removed_by' => $removedBy ?: auth()->id(),
+            'notes' => $notes ? ($this->notes ? $this->notes . "\n" . $notes : $notes) : $this->notes,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Mark placement as skipped.
+     */
+    public function markAsSkipped(string $reason, string $notes = null): bool
+    {
+        if ($this->status !== 'scheduled') {
+            return false;
+        }
+
+        $this->update([
+            'status' => 'skipped',
+            'skipped_at' => Carbon::now(),
+            'skip_reason' => $reason,
+            'notes' => $notes ? ($this->notes ? $this->notes . "\n" . $notes : $notes) : $this->notes,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Reschedule placement.
+     */
+    public function reschedule(Carbon $newDate, string $reason = null): bool
+    {
+        if ($this->status !== 'scheduled') {
+            return false;
+        }
+
+        $oldDate = $this->placement_date;
+        
+        $this->update([
+            'placement_date' => $newDate,
+            'notes' => ($this->notes ? $this->notes . "\n" : '') . 
+                      "Rescheduled from {$oldDate->format('Y-m-d')} to {$newDate->format('Y-m-d')}" .
+                      ($reason ? ": {$reason}" : ''),
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Get completion percentage for a set of placements.
+     */
+    public static function getCompletionRate($placements): float
+    {
+        if ($placements->isEmpty()) {
+            return 0;
+        }
+
+        $completed = $placements->whereIn('status', ['placed', 'removed'])->count();
+        $total = $placements->count();
+
+        return round(($completed / $total) * 100, 2);
     }
 }

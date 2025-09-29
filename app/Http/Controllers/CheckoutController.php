@@ -57,6 +57,65 @@ class CheckoutController extends Controller
                 ? $product->annual_subscription_price 
                 : $product->one_time_price;
             
+            $total += $price;<?php
+// app/Http/Controllers/CheckoutController.php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\FlagProduct;
+use App\Models\Holiday;
+use App\Models\ServiceArea;
+use App\Models\PotentialCustomer;
+use App\Models\User;
+use App\Models\Subscription;
+use App\Models\SubscriptionItem;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Stripe\StripeClient;
+use Carbon\Carbon;
+
+class CheckoutController extends Controller
+{
+    protected $stripe;
+
+    public function __construct()
+    {
+        $this->stripe = new StripeClient(env('STRIPE_SECRET'));
+    }
+
+    /**
+     * Show checkout page.
+     */
+    public function index(Request $request)
+    {
+        $request->validate([
+            'products' => 'required|array',
+            'products.*' => 'exists:flag_products,id',
+            'subscription_type' => 'required|in:onetime,annual',
+        ]);
+
+        $products = FlagProduct::with(['flagType', 'flagSize'])
+            ->whereIn('id', $request->products)
+            ->active()
+            ->get();
+
+        if ($products->isEmpty()) {
+            return redirect()->route('home')->with('error', 'No valid products selected.');
+        }
+
+        $subscriptionType = $request->subscription_type;
+        $holidays = Holiday::active()->ordered()->get();
+
+        // Calculate totals
+        $total = 0;
+        $items = [];
+
+        foreach ($products as $product) {
+            $price = $subscriptionType === 'annual' 
+                ? $product->annual_subscription_price 
+                : $product->one_time_price;
+            
             $total += $price;
             
             $items[] = [

@@ -4,6 +4,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use App\Models\FlagType;
 use App\Models\FlagProduct;
 use App\Models\Holiday;
@@ -16,15 +17,47 @@ class HomeController extends Controller
      */
     public function index()
     {
-        // Get featured flag types
-        $usFlags = FlagType::usFlags();
-        $militaryFlags = FlagType::militaryFlags();
-        
-        // Get upcoming holidays
-        $upcomingHolidays = Holiday::upcoming()->take(3)->get();
-        
-        // Get service area coverage for map display
-        $serviceAreas = ServiceArea::where('active', true)->get();
+        // Get featured flag types (with error handling)
+        $usFlags = collect();
+        $militaryFlags = collect();
+        try {
+            if (class_exists(FlagType::class) && Schema::hasTable('flag_types')) {
+                $usFlags = FlagType::where('active', true)
+                    ->where('category', 'US Flags')
+                    ->take(6)
+                    ->get();
+                $militaryFlags = FlagType::where('active', true)
+                    ->where('category', 'Military')
+                    ->take(6)
+                    ->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where FlagType doesn't exist yet
+        }
+
+        // Get upcoming holidays (with error handling)
+        $upcomingHolidays = collect();
+        try {
+            if (Schema::hasTable('holidays') && Schema::hasColumn('holidays', 'date')) {
+                $upcomingHolidays = Holiday::where('active', true)
+                    ->where('date', '>=', now())
+                    ->orderBy('date')
+                    ->take(3)
+                    ->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where holidays table doesn't exist yet
+        }
+
+        // Get service area coverage for map display (with error handling)
+        $serviceAreas = collect();
+        try {
+            if (Schema::hasTable('service_areas')) {
+                $serviceAreas = ServiceArea::where('active', true)->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where service_areas table doesn't exist yet
+        }
 
         return view('home', compact('usFlags', 'militaryFlags', 'upcomingHolidays', 'serviceAreas'));
     }
@@ -34,12 +67,27 @@ class HomeController extends Controller
      */
     public function pricing()
     {
-        $flagProducts = FlagProduct::with(['flagType', 'flagSize'])
-            ->active()
-            ->get()
-            ->groupBy('flagType.category');
+        $flagProducts = collect();
+        $holidays = collect();
 
-        $holidays = Holiday::active()->ordered()->get();
+        try {
+            if (Schema::hasTable('flag_products')) {
+                $flagProducts = FlagProduct::with(['flagType', 'flagSize'])
+                    ->where('active', true)
+                    ->get()
+                    ->groupBy('flagType.category');
+            }
+        } catch (\Exception $e) {
+            // Handle case where tables don't exist yet
+        }
+
+        try {
+            if (Schema::hasTable('holidays')) {
+                $holidays = Holiday::where('active', true)->orderBy('date')->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where holidays table doesn't exist yet
+        }
 
         return view('pricing', compact('flagProducts', 'holidays'));
     }
@@ -49,8 +97,16 @@ class HomeController extends Controller
      */
     public function howItWorks()
     {
-        $holidays = Holiday::active()->ordered()->get();
-        
+        $holidays = collect();
+
+        try {
+            if (Schema::hasTable('holidays')) {
+                $holidays = Holiday::where('active', true)->orderBy('date')->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where holidays table doesn't exist yet
+        }
+
         return view('how-it-works', compact('holidays'));
     }
 
@@ -59,8 +115,16 @@ class HomeController extends Controller
      */
     public function serviceAreas()
     {
-        $serviceAreas = ServiceArea::where('active', true)->get();
-        
+        $serviceAreas = collect();
+
+        try {
+            if (Schema::hasTable('service_areas')) {
+                $serviceAreas = ServiceArea::where('active', true)->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where service_areas table doesn't exist yet
+        }
+
         return view('service-areas', compact('serviceAreas'));
     }
 
@@ -76,25 +140,36 @@ class HomeController extends Controller
             'zip_code' => 'required|string',
         ]);
 
-        // In a real application, you'd use Google Maps Geocoding API
-        // For now, we'll use a simple zip code check
-        $isServed = ServiceArea::where('active', true)
-            ->where(function ($query) use ($request) {
-                $query->whereJsonContains('zip_codes', $request->zip_code);
-            })
-            ->exists();
+        try {
+            // In a real application, you'd use Google Maps Geocoding API
+            // For now, we'll use a simple zip code check
+            $isServed = false;
 
-        if ($isServed) {
+            if (Schema::hasTable('service_areas')) {
+                $isServed = ServiceArea::where('active', true)
+                    ->where(function ($query) use ($request) {
+                        $query->whereJsonContains('zip_codes', $request->zip_code);
+                    })
+                    ->exists();
+            }
+
+            if ($isServed) {
+                return response()->json([
+                    'served' => true,
+                    'message' => 'Great! We serve your area. You can proceed with your order.',
+                ]);
+            }
+
             return response()->json([
-                'served' => true,
-                'message' => 'Great! We serve your area. You can proceed with your order.',
+                'served' => false,
+                'message' => 'We don\'t currently serve your area, but we\'re expanding! We\'ll save your information and notify you when service becomes available.',
             ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'served' => false,
+                'message' => 'Unable to check service area at this time. Please try again later.',
+            ], 500);
         }
-
-        return response()->json([
-            'served' => false,
-            'message' => 'We don\'t currently serve your area, but we\'re expanding! We\'ll save your information and notify you when service becomes available.',
-        ]);
     }
 
     /**
@@ -102,87 +177,88 @@ class HomeController extends Controller
      */
     public function getFlagProducts(Request $request)
     {
-        $category = $request->get('category', 'all');
-        
-        $query = FlagProduct::with(['flagType', 'flagSize'])->active();
-        
-        if ($category !== 'all') {
-            $query->whereHas('flagType', function ($q) use ($category) {
-                $q->where('category', $category);
-            });
+        try {
+            $category = $request->get('category');
+
+            if (!Schema::hasTable('flag_products')) {
+                return response()->json([]);
+            }
+
+            $products = FlagProduct::with(['flagType', 'flagSize'])
+                ->where('active', true)
+                ->when($category, function ($query) use ($category) {
+                    $query->whereHas('flagType', function ($q) use ($category) {
+                        $q->where('category', $category);
+                    });
+                })
+                ->get();
+
+            return response()->json($products);
+        } catch (\Exception $e) {
+            return response()->json([]);
         }
-        
-        $products = $query->get()->groupBy('flagType.name');
-        
-        return response()->json($products);
     }
 
     /**
-     * Calculate subscription pricing (AJAX endpoint).
+     * Calculate pricing for selected products (AJAX endpoint).
      */
     public function calculatePricing(Request $request)
     {
-        $request->validate([
-            'products' => 'required|array',
-            'products.*' => 'exists:flag_products,id',
-            'subscription_type' => 'required|in:onetime,annual',
-        ]);
+        try {
+            $request->validate([
+                'products' => 'required|array',
+                'products.*' => 'integer',
+                'subscription_type' => 'required|in:onetime,annual',
+            ]);
 
-        $products = FlagProduct::with(['flagType', 'flagSize'])
-            ->whereIn('id', $request->products)
-            ->get();
+            if (!Schema::hasTable('flag_products')) {
+                return response()->json(['error' => 'Service temporarily unavailable'], 500);
+            }
 
-        $total = 0;
-        $items = [];
+            $products = FlagProduct::whereIn('id', $request->products)
+                ->where('active', true)
+                ->get();
 
-        foreach ($products as $product) {
-            $price = $request->subscription_type === 'annual' 
-                ? $product->annual_subscription_price 
-                : $product->one_time_price;
-            
-            $total += $price;
-            
-            $items[] = [
-                'id' => $product->id,
-                'name' => $product->display_name,
-                'price' => $price,
-                'formatted_price' => '$' . number_format($price, 2),
-            ];
+            $total = 0;
+            $items = [];
+
+            foreach ($products as $product) {
+                $price = $request->subscription_type === 'annual'
+                    ? $product->annual_subscription_price
+                    : $product->one_time_price;
+
+                $total += $price;
+
+                $items[] = [
+                    'id' => $product->id,
+                    'name' => $product->flagType->name ?? 'Flag Product',
+                    'price' => $price / 100, // Convert from cents
+                ];
+            }
+
+            return response()->json([
+                'total' => $total / 100, // Convert from cents
+                'items' => $items,
+                'subscription_type' => $request->subscription_type,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Unable to calculate pricing'], 500);
         }
-
-        $savings = 0;
-        if ($request->subscription_type === 'annual') {
-            // Calculate savings compared to buying for each holiday separately
-            $holidayCount = Holiday::active()->count();
-            $onetimeTotal = $products->sum('one_time_price') * $holidayCount;
-            $savings = max(0, $onetimeTotal - $total);
-        }
-
-        return response()->json([
-            'items' => $items,
-            'total' => $total,
-            'formatted_total' => '$' . number_format($total, 2),
-            'savings' => $savings,
-            'formatted_savings' => '$' . number_format($savings, 2),
-            'subscription_type' => $request->subscription_type,
-        ]);
     }
 
     /**
-     * Contact form submission.
+     * Handle contact form submission.
      */
     public function contact(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
-            'phone' => 'nullable|string|max:20',
             'message' => 'required|string|max:1000',
         ]);
 
-        // In a real application, you'd send an email or save to database
-        // For now, we'll just flash a success message
-        
-        return back()->with('success', 'Thank you for your message! We\'ll get back to you soon.');
+        // In a real application, you would send an email or save to database
+        // For now, just return success
+        return redirect()->back()->with('success', 'Thank you for your message! We\'ll get back to you soon.');
     }
 }

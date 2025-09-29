@@ -4,18 +4,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\FlagPlacement;
 use App\Models\Holiday;
 use App\Models\User;
 use App\Models\Route;
+use App\Services\NotificationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class PlacementController extends Controller
 {
-    public function __construct()
+    protected NotificationService $notificationService;
+
+    public function __construct(NotificationService $notificationService)
     {
-        $this->middleware(['auth', 'admin']);
+        $this->notificationService = $notificationService;
     }
 
     /**
@@ -23,47 +28,23 @@ class PlacementController extends Controller
      */
     public function index(Request $request)
     {
-        $query = FlagPlacement::with([
-            'subscription.user', 
-            'holiday', 
-            'flagProduct.flagType', 
-            'flagProduct.flagSize',
-            'placedByUser',
-            'removedByUser'
-        ]);
-
-        // Apply filters
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
+        // Check if flag_placements table exists
+        if (!Schema::hasTable('flag_placements')) {
+            return view('admin.placements.index', [
+                'placements' => collect(),
+                'holidays' => collect(),
+                'stats' => [
+                    'total_placements' => 0,
+                    'scheduled_placements' => 0,
+                    'completed_placements' => 0,
+                    'overdue_placements' => 0,
+                ]
+            ]);
         }
 
-        if ($request->filled('holiday_id')) {
-            $query->where('holiday_id', $request->holiday_id);
-        }
+        $query = FlagPlacement::with(['subscription.user', 'holiday', 'flagProduct.flagType']);
 
-        if ($request->filled('date_range')) {
-            switch ($request->date_range) {
-                case 'today':
-                    $query->whereDate('placement_date', Carbon::today());
-                    break;
-                case 'this_week':
-                    $query->whereBetween('placement_date', [
-                        Carbon::now()->startOfWeek(),
-                        Carbon::now()->endOfWeek()
-                    ]);
-                    break;
-                case 'this_month':
-                    $query->whereMonth('placement_date', Carbon::now()->month);
-                    break;
-                case 'overdue':
-                    $query->scheduled()->where('placement_date', '<', Carbon::now());
-                    break;
-                case 'upcoming':
-                    $query->scheduled()->where('placement_date', '>=', Carbon::now());
-                    break;
-            }
-        }
-
+        // Search functionality
         if ($request->filled('search')) {
             $search = $request->search;
             $query->whereHas('subscription.user', function ($q) use ($search) {
@@ -73,248 +54,52 @@ class PlacementController extends Controller
             });
         }
 
-        // Default to upcoming placements if no filter
-        if (!$request->filled('date_range') && !$request->filled('status')) {
-            $query->whereBetween('placement_date', [Carbon::now(), Carbon::now()->addDays(14)]);
+        // Status filter
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
         }
 
-        $placements = $query->orderBy('placement_date')->paginate(20);
+        // Holiday filter
+        if ($request->filled('holiday_id')) {
+            $query->where('holiday_id', $request->holiday_id);
+        }
 
-        // Get filter options
-        $holidays = Holiday::active()->orderBy('sort_order')->get();
-        $statuses = [
-            'scheduled' => 'Scheduled',
-            'placed' => 'Placed', 
-            'removed' => 'Removed',
-            'skipped' => 'Skipped',
-        ];
+        // Date range filter
+        if ($request->filled('date_from')) {
+            $query->where('placement_date', '>=', $request->date_from);
+        }
 
-        // Get summary stats
+        if ($request->filled('date_to')) {
+            $query->where('placement_date', '<=', $request->date_to);
+        }
+
+        $placements = $query->orderBy('placement_date', 'desc')->paginate(20);
+
+        // Get holidays for filter dropdown
+        $holidays = collect();
+        try {
+            if (Schema::hasTable('holidays')) {
+                $holidays = Holiday::where('active', true)->orderBy('name')->get();
+            }
+        } catch (\Exception $e) {
+            // Handle case where holidays table doesn't exist
+        }
+
+        // Get statistics
         $stats = [
-            'due_today' => FlagPlacement::dueForPlacementToday()->count(),
-            'overdue' => FlagPlacement::overduePlacement()->count(),
-            'due_removal' => FlagPlacement::dueForRemovalToday()->count(),
-            'overdue_removal' => FlagPlacement::overdueRemoval()->count(),
+            'total_placements' => FlagPlacement::count(),
+            'scheduled_placements' => FlagPlacement::where('status', 'scheduled')->count(),
+            'completed_placements' => FlagPlacement::where('status', 'placed')->count(),
+            'overdue_placements' => FlagPlacement::where('status', 'scheduled')
+                ->where('placement_date', '<', Carbon::now())
+                ->count(),
         ];
 
-        return view('admin.placements.index', compact(
-            'placements',
-            'holidays',
-            'statuses',
-            'stats'
-        ));
+        return view('admin.placements.index', compact('placements', 'holidays', 'stats'));
     }
 
     /**
-     * Mark placement as placed.
-     */
-    public function place(Request $request, FlagPlacement $placement)
-    {
-        $request->validate([
-            'notes' => 'nullable|string|max:500',
-        ]);
-
-        if (!$placement->isScheduled()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Placement is not in scheduled status.'
-            ], 400);
-        }
-
-        $placement->markAsPlaced(auth()->id(), $request->notes);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Flag marked as placed successfully.',
-            'placement' => $placement->load(['subscription.user', 'holiday'])
-        ]);
-    }
-
-    /**
-     * Mark placement as removed.
-     */
-    public function remove(Request $request, FlagPlacement $placement)
-    {
-        $request->validate([
-            'notes' => 'nullable|string|max:500',
-        ]);
-
-        if (!$placement->isPlaced()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Placement is not in placed status.'
-            ], 400);
-        }
-
-        $placement->markAsRemoved(auth()->id(), $request->notes);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Flag marked as removed successfully.',
-            'placement' => $placement->load(['subscription.user', 'holiday'])
-        ]);
-    }
-
-    /**
-     * Skip a placement.
-     */
-    public function skip(Request $request, FlagPlacement $placement)
-    {
-        $request->validate([
-            'reason' => 'required|string|max:500',
-        ]);
-
-        if (!$placement->isScheduled()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only scheduled placements can be skipped.'
-            ], 400);
-        }
-
-        $placement->markAsSkipped($request->reason);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Placement skipped successfully.',
-            'placement' => $placement->load(['subscription.user', 'holiday'])
-        ]);
-    }
-
-    /**
-     * Bulk update placements.
-     */
-    public function bulkUpdate(Request $request)
-    {
-        $request->validate([
-            'placement_ids' => 'required|array',
-            'placement_ids.*' => 'exists:flag_placements,id',
-            'action' => 'required|in:place,remove,skip,reschedule',
-            'notes' => 'nullable|string|max:500',
-            'reason' => 'required_if:action,skip|string|max:500',
-            'new_date' => 'required_if:action,reschedule|date|after:today',
-        ]);
-
-        $placements = FlagPlacement::whereIn('id', $request->placement_ids)->get();
-        $updated = 0;
-        $errors = [];
-
-        foreach ($placements as $placement) {
-            try {
-                switch ($request->action) {
-                    case 'place':
-                        if ($placement->isScheduled()) {
-                            $placement->markAsPlaced(auth()->id(), $request->notes);
-                            $updated++;
-                        } else {
-                            $errors[] = "Placement #{$placement->id} is not scheduled";
-                        }
-                        break;
-                        
-                    case 'remove':
-                        if ($placement->isPlaced()) {
-                            $placement->markAsRemoved(auth()->id(), $request->notes);
-                            $updated++;
-                        } else {
-                            $errors[] = "Placement #{$placement->id} is not placed";
-                        }
-                        break;
-                        
-                    case 'skip':
-                        if ($placement->isScheduled()) {
-                            $placement->markAsSkipped($request->reason);
-                            $updated++;
-                        } else {
-                            $errors[] = "Placement #{$placement->id} cannot be skipped";
-                        }
-                        break;
-                        
-                    case 'reschedule':
-                        if ($placement->isScheduled()) {
-                            $placement->update([
-                                'placement_date' => Carbon::parse($request->new_date),
-                                'removal_date' => Carbon::parse($request->new_date)->addDays(3),
-                            ]);
-                            $updated++;
-                        } else {
-                            $errors[] = "Placement #{$placement->id} cannot be rescheduled";
-                        }
-                        break;
-                }
-            } catch (\Exception $e) {
-                $errors[] = "Error updating placement #{$placement->id}: " . $e->getMessage();
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'updated' => $updated,
-            'errors' => $errors,
-            'message' => "{$updated} placements updated successfully."
-        ]);
-    }
-
-    /**
-     * Generate placement calendar view.
-     */
-    public function calendar(Request $request)
-    {
-        $start = Carbon::parse($request->get('start', Carbon::now()->startOfMonth()));
-        $end = Carbon::parse($request->get('end', Carbon::now()->endOfMonth()));
-
-        $placements = FlagPlacement::with(['subscription.user', 'holiday', 'flagProduct.flagType'])
-            ->whereBetween('placement_date', [$start, $end])
-            ->orWhereBetween('removal_date', [$start, $end])
-            ->get();
-
-        $events = [];
-
-        foreach ($placements as $placement) {
-            // Placement event
-            $events[] = [
-                'id' => 'placement-' . $placement->id,
-                'title' => $placement->holiday->name . ' - ' . $placement->subscription->user->full_name,
-                'start' => $placement->placement_date->toDateString(),
-                'color' => $this->getStatusColor($placement->status),
-                'textColor' => '#ffffff',
-                'extendedProps' => [
-                    'type' => 'placement',
-                    'placement_id' => $placement->id,
-                    'customer' => $placement->subscription->user->full_name,
-                    'flag' => $placement->flagProduct->flagType->name,
-                    'status' => $placement->status,
-                    'address' => $placement->subscription->user->full_address,
-                ]
-            ];
-
-            // Removal event (only if placed)
-            if ($placement->isPlaced() || $placement->isRemoved()) {
-                $events[] = [
-                    'id' => 'removal-' . $placement->id,
-                    'title' => 'Remove: ' . $placement->subscription->user->full_name,
-                    'start' => $placement->removal_date->toDateString(),
-                    'color' => $placement->isRemoved() ? '#6B7280' : '#F59E0B',
-                    'textColor' => '#ffffff',
-                    'extendedProps' => [
-                        'type' => 'removal',
-                        'placement_id' => $placement->id,
-                        'customer' => $placement->subscription->user->full_name,
-                        'flag' => $placement->flagProduct->flagType->name,
-                        'status' => $placement->status,
-                        'address' => $placement->subscription->user->full_address,
-                    ]
-                ];
-            }
-        }
-
-        if ($request->wantsJson()) {
-            return response()->json($events);
-        }
-
-        return view('admin.placements.calendar', compact('events'));
-    }
-
-    /**
-     * Show placement details.
+     * Display the specified flag placement.
      */
     public function show(FlagPlacement $placement)
     {
@@ -324,38 +109,266 @@ class PlacementController extends Controller
             'holiday',
             'flagProduct.flagType',
             'flagProduct.flagSize',
-            'placedByUser',
-            'removedByUser'
         ]);
 
         return view('admin.placements.show', compact('placement'));
     }
 
     /**
-     * Get route optimization suggestions.
+     * Show calendar view of placements.
      */
-    public function optimizeRoutes(Request $request)
+    public function calendar(Request $request)
     {
-        $request->validate([
-            'date' => 'required|date',
-            'holiday_id' => 'required|exists:holidays,id',
-            'type' => 'required|in:placement,removal',
-        ]);
+        return view('admin.placements.calendar');
+    }
 
-        $date = Carbon::parse($request->date);
-        $holidayId = $request->holiday_id;
-
-        if ($request->type === 'placement') {
-            $routes = Route::generatePlacementRoutes($date, $holidayId);
-        } else {
-            $routes = Route::generateRemovalRoutes($date, $holidayId);
+    /**
+     * Get calendar data for placements.
+     */
+    public function getCalendarData(Request $request)
+    {
+        if (!Schema::hasTable('flag_placements')) {
+            return response()->json([]);
         }
 
-        return response()->json([
-            'success' => true,
-            'routes' => $routes->load(['assignedUser']),
-            'message' => count($routes) . ' routes generated successfully.'
+        $start = Carbon::parse($request->start);
+        $end = Carbon::parse($request->end);
+
+        $placements = FlagPlacement::with(['subscription.user', 'holiday'])
+            ->whereBetween('placement_date', [$start, $end])
+            ->get()
+            ->map(function ($placement) {
+                $color = match($placement->status) {
+                    'scheduled' => '#3B82F6', // Blue
+                    'placed' => '#10B981',     // Green
+                    'skipped' => '#F59E0B',    // Yellow
+                    default => '#6B7280'       // Gray
+                };
+
+                return [
+                    'id' => $placement->id,
+                    'title' => $placement->holiday->name . ' - ' . $placement->subscription->user->full_name,
+                    'start' => $placement->placement_date->format('Y-m-d'),
+                    'backgroundColor' => $color,
+                    'borderColor' => $color,
+                    'url' => route('admin.placements.show', $placement),
+                ];
+            });
+
+        return response()->json($placements);
+    }
+
+    /**
+     * Mark a placement as placed.
+     */
+    public function place(Request $request, FlagPlacement $placement)
+    {
+        $validator = Validator::make($request->all(), [
+            'notes' => 'nullable|string|max:500',
         ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        if ($placement->status !== 'scheduled') {
+            return redirect()->back()
+                ->with('error', 'Only scheduled placements can be marked as placed.');
+        }
+
+        $placement->update([
+            'status' => 'placed',
+            'placed_at' => Carbon::now(),
+            'notes' => $request->notes,
+        ]);
+
+        // Send notification to customer
+        $this->notificationService->sendEmail(
+            $placement->subscription->user->email,
+            'Flag Placed Successfully',
+            "Your {$placement->flagProduct->flagType->name} flag has been placed for {$placement->holiday->name}.",
+            'flag-placement-completed',
+            ['placement' => $placement]
+        );
+
+        return redirect()->back()
+            ->with('success', 'Placement marked as completed successfully.');
+    }
+
+    /**
+     * Mark a placement as removed.
+     */
+    public function remove(Request $request, FlagPlacement $placement)
+    {
+        $validator = Validator::make($request->all(), [
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        if ($placement->status !== 'placed') {
+            return redirect()->back()
+                ->with('error', 'Only placed flags can be removed.');
+        }
+
+        $placement->update([
+            'status' => 'removed',
+            'removed_at' => Carbon::now(),
+            'notes' => ($placement->notes ? $placement->notes . "\n" : '') . $request->notes,
+        ]);
+
+        return redirect()->back()
+            ->with('success', 'Flag removal recorded successfully.');
+    }
+
+    /**
+     * Skip a placement.
+     */
+    public function skip(Request $request, FlagPlacement $placement)
+    {
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        if ($placement->status !== 'scheduled') {
+            return redirect()->back()
+                ->with('error', 'Only scheduled placements can be skipped.');
+        }
+
+        $placement->update([
+            'status' => 'skipped',
+            'skipped_at' => Carbon::now(),
+            'skip_reason' => $request->reason,
+        ]);
+
+        // Send notification to customer
+        $this->notificationService->sendEmail(
+            $placement->subscription->user->email,
+            'Flag Placement Update',
+            "We were unable to place your flag for {$placement->holiday->name}. Reason: {$request->reason}",
+            'flag-placement-skipped',
+            ['placement' => $placement, 'reason' => $request->reason]
+        );
+
+        return redirect()->back()
+            ->with('success', 'Placement skipped successfully.');
+    }
+
+    /**
+     * Bulk update placements.
+     */
+    public function bulkUpdate(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'placement_ids' => 'required|array|min:1',
+            'placement_ids.*' => 'exists:flag_placements,id',
+            'action' => 'required|in:place,skip,reschedule',
+            'notes' => 'nullable|string|max:500',
+            'new_date' => 'required_if:action,reschedule|nullable|date',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $placements = FlagPlacement::whereIn('id', $request->placement_ids)->get();
+        $updatedCount = 0;
+
+        foreach ($placements as $placement) {
+            switch ($request->action) {
+                case 'place':
+                    if ($placement->status === 'scheduled') {
+                        $placement->update([
+                            'status' => 'placed',
+                            'placed_at' => Carbon::now(),
+                            'notes' => $request->notes,
+                        ]);
+                        $updatedCount++;
+                    }
+                    break;
+
+                case 'skip':
+                    if ($placement->status === 'scheduled') {
+                        $placement->update([
+                            'status' => 'skipped',
+                            'skipped_at' => Carbon::now(),
+                            'skip_reason' => $request->notes,
+                        ]);
+                        $updatedCount++;
+                    }
+                    break;
+
+                case 'reschedule':
+                    if ($placement->status === 'scheduled') {
+                        $placement->update([
+                            'placement_date' => $request->new_date,
+                            'notes' => ($placement->notes ? $placement->notes . "\n" : '') .
+                                      "Rescheduled: " . $request->notes,
+                        ]);
+                        $updatedCount++;
+                    }
+                    break;
+            }
+        }
+
+        return redirect()->back()
+            ->with('success', "Bulk update completed. {$updatedCount} placements updated.");
+    }
+
+    /**
+     * Send placement reminders.
+     */
+    public function sendReminders(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'days_ahead' => 'required|integer|min:1|max:7',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $reminderDate = Carbon::now()->addDays($request->days_ahead);
+
+        $placements = FlagPlacement::with(['subscription.user', 'holiday'])
+            ->where('status', 'scheduled')
+            ->whereDate('placement_date', $reminderDate)
+            ->get();
+
+        $sentCount = 0;
+
+        foreach ($placements as $placement) {
+            $success = $this->notificationService->sendEmail(
+                $placement->subscription->user->email,
+                'Upcoming Flag Placement',
+                "Your {$placement->holiday->name} flag is scheduled to be placed on {$placement->placement_date->format('F j, Y')}.",
+                'flag-placement-reminder',
+                ['placement' => $placement]
+            );
+
+            if ($success) {
+                $sentCount++;
+            }
+        }
+
+        return redirect()->back()
+            ->with('success', "Reminders sent to {$sentCount} customers.");
     }
 
     /**
@@ -363,6 +376,10 @@ class PlacementController extends Controller
      */
     public function export(Request $request)
     {
+        if (!Schema::hasTable('flag_placements')) {
+            return redirect()->back()->with('error', 'Placements data not available.');
+        }
+
         $query = FlagPlacement::with([
             'subscription.user',
             'holiday',
@@ -379,24 +396,31 @@ class PlacementController extends Controller
             $query->where('holiday_id', $request->holiday_id);
         }
 
+        if ($request->filled('date_from')) {
+            $query->where('placement_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('placement_date', '<=', $request->date_to);
+        }
+
         $placements = $query->orderBy('placement_date')->get();
 
         $filename = 'flag_placements_' . date('Y-m-d_H-i-s') . '.csv';
-        
+
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"$filename\"",
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
         $callback = function() use ($placements) {
             $file = fopen('php://output', 'w');
-            
-            // CSV headers
+
+            // Add CSV headers
             fputcsv($file, [
-                'ID',
                 'Customer Name',
-                'Email',
-                'Address',
+                'Customer Email',
+                'Customer Address',
                 'Holiday',
                 'Flag Type',
                 'Flag Size',
@@ -405,25 +429,26 @@ class PlacementController extends Controller
                 'Status',
                 'Placed At',
                 'Removed At',
-                'Notes'
+                'Notes',
+                'Created Date',
             ]);
 
-            // CSV data
+            // Add data rows
             foreach ($placements as $placement) {
                 fputcsv($file, [
-                    $placement->id,
                     $placement->subscription->user->full_name,
                     $placement->subscription->user->email,
                     $placement->subscription->user->full_address,
                     $placement->holiday->name,
                     $placement->flagProduct->flagType->name,
-                    $placement->flagProduct->flagSize->name,
+                    $placement->flagProduct->flagSize->name ?? 'Standard',
                     $placement->placement_date->format('Y-m-d'),
-                    $placement->removal_date->format('Y-m-d'),
-                    $placement->status,
-                    $placement->placed_at ? $placement->placed_at->format('Y-m-d H:i:s') : '',
-                    $placement->removed_at ? $placement->removed_at->format('Y-m-d H:i:s') : '',
-                    $placement->notes ?? '',
+                    $placement->removal_date?->format('Y-m-d'),
+                    ucfirst($placement->status),
+                    $placement->placed_at?->format('Y-m-d H:i:s'),
+                    $placement->removed_at?->format('Y-m-d H:i:s'),
+                    $placement->notes,
+                    $placement->created_at->format('Y-m-d H:i:s'),
                 ]);
             }
 
@@ -431,54 +456,5 @@ class PlacementController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
-    }
-
-    /**
-     * Get status color for calendar events.
-     */
-    private function getStatusColor($status)
-    {
-        return [
-            'scheduled' => '#3B82F6', // Blue
-            'placed' => '#10B981',     // Green
-            'removed' => '#6B7280',    // Gray
-            'skipped' => '#F59E0B',    // Yellow
-        ][$status] ?? '#6B7280';
-    }
-
-    /**
-     * Send placement reminders.
-     */
-    public function sendReminders(Request $request)
-    {
-        $request->validate([
-            'placement_ids' => 'required|array',
-            'placement_ids.*' => 'exists:flag_placements,id',
-            'type' => 'required|in:placement,removal',
-        ]);
-
-        $placements = FlagPlacement::with(['subscription.user', 'holiday'])
-            ->whereIn('id', $request->placement_ids)
-            ->get();
-
-        $sent = 0;
-
-        foreach ($placements as $placement) {
-            if ($request->type === 'placement' && $placement->isScheduled()) {
-                // Send placement reminder
-                $placement->sendPlacementNotification();
-                $sent++;
-            } elseif ($request->type === 'removal' && $placement->isPlaced()) {
-                // Send removal reminder
-                $placement->sendRemovalNotification();
-                $sent++;
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'sent' => $sent,
-            'message' => "{$sent} reminders sent successfully."
-        ]);
     }
 }
