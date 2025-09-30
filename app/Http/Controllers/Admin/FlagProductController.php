@@ -14,9 +14,7 @@ use Carbon\Carbon;
 
 class FlagProductController extends Controller
 {
-    /**
-     * Display a listing of flag products.
-     */
+
     /**
      * Display a listing of flag products.
      */
@@ -83,7 +81,7 @@ class FlagProductController extends Controller
             }
         }
 
-        $flagProducts = $query->orderBy('flag_type_id')->orderBy('flag_size_id')->paginate(20);
+        $products = $query->orderBy('flag_type_id')->orderBy('flag_size_id')->paginate(20);
 
         // Get filter options
         $flagTypes = FlagType::active()->orderBy('name')->get();
@@ -102,7 +100,7 @@ class FlagProductController extends Controller
         ];
 
         return view('admin.flag-products.index', compact(
-            'flagProducts',
+            'products',
             'flagTypes',
             'flagSizes',
             'categories',

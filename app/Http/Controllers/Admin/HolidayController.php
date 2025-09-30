@@ -5,24 +5,19 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Holiday;
-use App\Models\FlagPlacement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class HolidayController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware(['auth', 'admin']);
-    }
-
     /**
      * Display a listing of holidays.
      */
     public function index(Request $request)
     {
-        $query = Holiday::withCount(['flagPlacements']);
+        $query = Holiday::query();
 
         // Search functionality
         if ($request->filled('search')) {
@@ -33,34 +28,48 @@ class HolidayController extends Controller
             });
         }
 
-        // Status filter
+        // Filter by active status
         if ($request->filled('status')) {
             $query->where('active', $request->status === 'active');
         }
 
-        // Year filter
-        if ($request->filled('year')) {
-            $year = $request->year;
-            $query->where(function ($q) use ($year) {
-                $q->whereYear('date', $year)
-                  ->orWhere('recurring', true);
-            });
+        // Filter by date range - check if date column exists
+        if ($request->filled('date_from')) {
+            if (\Schema::hasColumn('holidays', 'date')) {
+                $query->whereDate('date', '>=', $request->date_from);
+            }
         }
 
-        // Upcoming filter
-        if ($request->filled('upcoming') && $request->upcoming === '1') {
-            $query->where(function ($q) {
-                $q->where('date', '>=', Carbon::now())
-                  ->orWhere('recurring', true);
-            });
+        if ($request->filled('date_to')) {
+            if (\Schema::hasColumn('holidays', 'date')) {
+                $query->whereDate('date', '<=', $request->date_to);
+            }
         }
 
-        $holidays = $query->orderBy('date')->paginate(20);
+        // Order by date if column exists, otherwise by sort_order
+        if (\Schema::hasColumn('holidays', 'date')) {
+            $holidays = $query->orderBy('date')->paginate(20);
+        } else {
+            $holidays = $query->orderBy('sort_order')->orderBy('name')->paginate(20);
+        }
 
-        // Get years for filter dropdown
-        $years = range(date('Y') - 2, date('Y') + 2);
+        // Get statistics
+        $stats = [
+            'total' => Holiday::count(),
+            'active' => Holiday::where('active', true)->count(),
+            'upcoming' => 0,
+            'past' => 0,
+        ];
 
-        return view('admin.holidays.index', compact('holidays', 'years'));
+        // Calculate upcoming/past only if date column exists
+        if (\Schema::hasColumn('holidays', 'date')) {
+            $stats['upcoming'] = Holiday::where('date', '>=', Carbon::now())
+                ->where('active', true)
+                ->count();
+            $stats['past'] = Holiday::where('date', '<', Carbon::now())->count();
+        }
+
+        return view('admin.holidays.index', compact('holidays', 'stats'));
     }
 
     /**
@@ -78,7 +87,7 @@ class HolidayController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string|max:1000',
+            'description' => 'nullable|string',
             'date' => 'required|date',
             'recurring' => 'boolean',
             'placement_days_before' => 'required|integer|min:0|max:30',
@@ -95,6 +104,7 @@ class HolidayController extends Controller
 
         Holiday::create([
             'name' => $request->name,
+            'slug' => Str::slug($request->name),
             'description' => $request->description,
             'date' => $request->date,
             'recurring' => $request->has('recurring'),
@@ -113,31 +123,17 @@ class HolidayController extends Controller
      */
     public function show(Holiday $holiday)
     {
-        $holiday->load(['flagPlacements.subscription.user', 'flagPlacements.flagProduct.flagType']);
+        $holiday->load('placements.subscription.user');
 
-        // Get placement statistics
+        // Get statistics for this holiday
         $stats = [
-            'total_placements' => $holiday->flagPlacements->count(),
-            'scheduled_placements' => $holiday->flagPlacements->where('status', 'scheduled')->count(),
-            'completed_placements' => $holiday->flagPlacements->where('status', 'placed')->count(),
-            'upcoming_placements' => $holiday->flagPlacements
-                ->where('placement_date', '>=', Carbon::now())
-                ->where('status', 'scheduled')
-                ->count(),
+            'total_placements' => $holiday->placements()->count(),
+            'scheduled_placements' => $holiday->placements()->where('status', 'scheduled')->count(),
+            'completed_placements' => $holiday->placements()->where('status', 'placed')->count(),
+            'skipped_placements' => $holiday->placements()->where('status', 'skipped')->count(),
         ];
 
-        // Get next occurrence dates
-        $nextOccurrence = $holiday->getNextOccurrence();
-        $placementDate = $holiday->getPlacementDate($nextOccurrence);
-        $removalDate = $holiday->getRemovalDate($nextOccurrence);
-
-        return view('admin.holidays.show', compact(
-            'holiday',
-            'stats',
-            'nextOccurrence',
-            'placementDate',
-            'removalDate'
-        ));
+        return view('admin.holidays.show', compact('holiday', 'stats'));
     }
 
     /**
@@ -154,8 +150,8 @@ class HolidayController extends Controller
     public function update(Request $request, Holiday $holiday)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string|max:1000',
+            'name' => 'required|string|max:255|unique:holidays,name,' . $holiday->id,
+            'description' => 'nullable|string',
             'date' => 'required|date',
             'recurring' => 'boolean',
             'placement_days_before' => 'required|integer|min:0|max:30',
@@ -172,6 +168,7 @@ class HolidayController extends Controller
 
         $holiday->update([
             'name' => $request->name,
+            'slug' => Str::slug($request->name),
             'description' => $request->description,
             'date' => $request->date,
             'recurring' => $request->has('recurring'),
@@ -181,7 +178,7 @@ class HolidayController extends Controller
             'sort_order' => $request->sort_order ?? 0,
         ]);
 
-        return redirect()->route('admin.holidays.index')
+        return redirect()->route('admin.holidays.show', $holiday)
             ->with('success', 'Holiday updated successfully.');
     }
 
@@ -190,15 +187,10 @@ class HolidayController extends Controller
      */
     public function destroy(Holiday $holiday)
     {
-        // Check if holiday has scheduled placements
-        $scheduledPlacements = $holiday->flagPlacements()
-            ->where('status', 'scheduled')
-            ->where('placement_date', '>=', Carbon::now())
-            ->count();
-
-        if ($scheduledPlacements > 0) {
-            return redirect()->route('admin.holidays.index')
-                ->with('error', 'Cannot delete holiday with scheduled placements.');
+        // Check if holiday has placements
+        if ($holiday->placements()->count() > 0) {
+            return redirect()->back()
+                ->with('error', 'Cannot delete holiday with existing placements. Please remove or reassign placements first.');
         }
 
         $holiday->delete();
@@ -208,89 +200,53 @@ class HolidayController extends Controller
     }
 
     /**
-     * Toggle active status of holiday.
+     * Generate placements for a holiday.
      */
-    public function toggleActive(Holiday $holiday)
+    public function generatePlacements(Holiday $holiday)
     {
-        $holiday->update(['active' => !$holiday->active]);
-
-        $status = $holiday->active ? 'activated' : 'deactivated';
-
-        return response()->json([
-            'success' => true,
-            'message' => "Holiday {$status} successfully.",
-            'active' => $holiday->active
-        ]);
-    }
-
-    /**
-     * Generate placements for holiday.
-     */
-    public function generatePlacements(Request $request, Holiday $holiday)
-    {
-        $validator = Validator::make($request->all(), [
-            'year' => 'required|integer|min:' . (date('Y') - 1) . '|max:' . (date('Y') + 2),
-        ]);
-
-        if ($validator->fails()) {
+        // Logic to generate placements for all active subscriptions
+        // This would create FlagPlacement records for this holiday
+        
+        $subscriptionsCount = \App\Models\Subscription::where('status', 'active')->count();
+        
+        if ($subscriptionsCount === 0) {
             return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
+                ->with('error', 'No active subscriptions found to generate placements.');
         }
 
-        $year = $request->year;
-        $generatedCount = 0;
-
-        // Get all active subscriptions
-        $subscriptions = \App\Models\Subscription::active()
-            ->whereHas('holidays', function ($query) use ($holiday) {
-                $query->where('holiday_id', $holiday->id);
-            })
-            ->get();
-
+        // Create placements for each active subscription
+        $created = 0;
+        $subscriptions = \App\Models\Subscription::where('status', 'active')->get();
+        
         foreach ($subscriptions as $subscription) {
-            $placementDates = $holiday->getPlacementDatesForYear($year);
-
-            // Skip if placement date is outside subscription period
-            if ($placementDates['placement_date'] < $subscription->start_date ||
-                $placementDates['placement_date'] > $subscription->end_date) {
-                continue;
-            }
-
-            foreach ($subscription->items as $item) {
-                // Check if placement already exists
-                $existingPlacement = FlagPlacement::where([
+            // Check if placement already exists
+            $exists = \App\Models\FlagPlacement::where('holiday_id', $holiday->id)
+                ->where('subscription_id', $subscription->id)
+                ->exists();
+            
+            if (!$exists) {
+                \App\Models\FlagPlacement::create([
                     'subscription_id' => $subscription->id,
                     'holiday_id' => $holiday->id,
-                    'flag_product_id' => $item->flag_product_id,
-                    'placement_date' => $placementDates['placement_date'],
-                ])->first();
-
-                if (!$existingPlacement) {
-                    FlagPlacement::create([
-                        'subscription_id' => $subscription->id,
-                        'holiday_id' => $holiday->id,
-                        'flag_product_id' => $item->flag_product_id,
-                        'placement_date' => $placementDates['placement_date'],
-                        'removal_date' => $placementDates['removal_date'],
-                        'status' => 'scheduled',
-                    ]);
-
-                    $generatedCount++;
-                }
+                    'flag_product_id' => $subscription->flag_product_id,
+                    'scheduled_date' => $holiday->date->copy()->subDays($holiday->placement_days_before),
+                    'removal_date' => $holiday->date->copy()->addDays($holiday->removal_days_after),
+                    'status' => 'scheduled',
+                ]);
+                $created++;
             }
         }
 
         return redirect()->back()
-            ->with('success', "Generated {$generatedCount} flag placements for {$holiday->name} in {$year}.");
+            ->with('success', "Generated {$created} placements for {$holiday->name}.");
     }
 
     /**
-     * Export holiday data to CSV.
+     * Export holidays to CSV.
      */
     public function export(Request $request)
     {
-        $query = Holiday::withCount(['flagPlacements']);
+        $query = Holiday::query();
 
         // Apply same filters as index
         if ($request->filled('status')) {
@@ -299,8 +255,8 @@ class HolidayController extends Controller
 
         $holidays = $query->orderBy('date')->get();
 
-        $filename = 'holidays_' . date('Y-m-d_H-i-s') . '.csv';
-
+        $filename = 'holidays_' . Carbon::now()->format('Y-m-d_His') . '.csv';
+        
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
@@ -308,9 +264,10 @@ class HolidayController extends Controller
 
         $callback = function() use ($holidays) {
             $file = fopen('php://output', 'w');
-
-            // Add CSV headers
+            
+            // Headers
             fputcsv($file, [
+                'ID',
                 'Name',
                 'Description',
                 'Date',
@@ -318,22 +275,21 @@ class HolidayController extends Controller
                 'Placement Days Before',
                 'Removal Days After',
                 'Active',
-                'Total Placements',
                 'Sort Order',
-                'Created Date',
+                'Created At',
             ]);
 
-            // Add data rows
+            // Data rows
             foreach ($holidays as $holiday) {
                 fputcsv($file, [
+                    $holiday->id,
                     $holiday->name,
                     $holiday->description,
                     $holiday->date->format('Y-m-d'),
                     $holiday->recurring ? 'Yes' : 'No',
                     $holiday->placement_days_before,
                     $holiday->removal_days_after,
-                    $holiday->active ? 'Yes' : 'No',
-                    $holiday->flag_placements_count,
+                    $holiday->active ? 'Active' : 'Inactive',
                     $holiday->sort_order,
                     $holiday->created_at->format('Y-m-d H:i:s'),
                 ]);
@@ -344,4 +300,4 @@ class HolidayController extends Controller
 
         return response()->stream($callback, 200, $headers);
     }
-  }
+}
