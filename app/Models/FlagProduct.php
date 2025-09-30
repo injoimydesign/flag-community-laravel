@@ -243,21 +243,46 @@ public function getMonthlyUsage(): int
 
 /**
  * Adjust inventory and log the change.
+ * This method is in the FlagProduct model (app/Models/FlagProduct.php)
+ *
+ * FIXES: Updated column names from previous_inventory/new_inventory to previous_quantity/new_quantity
  */
 public function adjustInventory(int $quantity, string $type, string $reason, int $adjustedBy = null): bool
 {
     $previousInventory = $this->current_inventory;
 
+    // Map the type to database enum values
+    $dbAdjustmentType = match($type) {
+        'increase' => 'restock',
+        'decrease' => 'sale',
+        'set' => 'correction',
+        'restock' => 'restock',
+        'sale' => 'sale',
+        'damage' => 'damage',
+        'loss' => 'loss',
+        'return' => 'return',
+        'correction' => 'correction',
+        default => 'correction'
+    };
+
     switch ($type) {
         case 'increase':
+        case 'restock':
+        case 'return':
             $newInventory = $previousInventory + $quantity;
+            $actualQuantity = $quantity;
             break;
         case 'decrease':
+        case 'sale':
+        case 'damage':
+        case 'loss':
             $newInventory = max(0, $previousInventory - $quantity);
+            $actualQuantity = -$quantity;
             break;
         case 'set':
+        case 'correction':
             $newInventory = $quantity;
-            $quantity = $quantity - $previousInventory; // Actual change
+            $actualQuantity = $quantity - $previousInventory; // Actual change
             break;
         default:
             return false;
@@ -266,13 +291,13 @@ public function adjustInventory(int $quantity, string $type, string $reason, int
     // Update inventory
     $this->update(['current_inventory' => $newInventory]);
 
-    // Log adjustment
+    // Log adjustment with CORRECT column names
     InventoryAdjustment::create([
         'flag_product_id' => $this->id,
-        'adjustment_type' => $type,
-        'quantity' => $quantity,
-        'previous_inventory' => $previousInventory,
-        'new_inventory' => $newInventory,
+        'adjustment_type' => $dbAdjustmentType,
+        'quantity' => $actualQuantity,
+        'previous_quantity' => $previousInventory,  // FIXED: Changed from 'previous_inventory'
+        'new_quantity' => $newInventory,            // FIXED: Changed from 'new_inventory'
         'reason' => $reason,
         'adjusted_by' => $adjustedBy ?: auth()->id(),
     ]);
@@ -289,6 +314,6 @@ public function useForPlacement(int $quantity = 1, string $reason = 'Used for fl
         return false; // Not enough inventory
     }
 
-    return $this->adjustInventory($quantity, 'decrease', $reason);
+    return $this->adjustInventory($quantity, 'sale', $reason);  // Use 'sale' enum value
 }
 }

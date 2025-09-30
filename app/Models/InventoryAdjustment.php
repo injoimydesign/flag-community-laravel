@@ -15,16 +15,16 @@ class InventoryAdjustment extends Model
         'flag_product_id',
         'adjustment_type',
         'quantity',
-        'previous_inventory',
-        'new_inventory',
+        'previous_quantity',  // CHANGED from 'previous_inventory'
+        'new_quantity',       // CHANGED from 'new_inventory'
         'reason',
         'adjusted_by',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
-        'previous_inventory' => 'integer',
-        'new_inventory' => 'integer',
+        'previous_quantity' => 'integer',  // CHANGED from 'previous_inventory'
+        'new_quantity' => 'integer',       // CHANGED from 'new_inventory'
     ];
 
     /**
@@ -66,11 +66,12 @@ class InventoryAdjustment extends Model
     {
         return match($this->adjustment_type) {
             'initial' => 'Initial Stock',
-            'increase' => 'Stock Added',
-            'decrease' => 'Stock Removed',
-            'set' => 'Stock Set',
-            'usage' => 'Used for Placement',
-            'restock' => 'Restocked',
+            'restock' => 'Stock Added / Restocked',
+            'sale' => 'Sale / Used',
+            'damage' => 'Damaged',
+            'loss' => 'Lost',
+            'return' => 'Returned',
+            'correction' => 'Correction',
             default => ucfirst($this->adjustment_type),
         };
     }
@@ -80,8 +81,8 @@ class InventoryAdjustment extends Model
      */
     public function getNetChangeAttribute(): int
     {
-        if ($this->new_inventory !== null && $this->previous_inventory !== null) {
-            return $this->new_inventory - $this->previous_inventory;
+        if ($this->new_quantity !== null && $this->previous_quantity !== null) {
+            return $this->new_quantity - $this->previous_quantity;
         }
 
         return $this->quantity;
@@ -92,7 +93,7 @@ class InventoryAdjustment extends Model
      */
     public function isIncrease(): bool
     {
-        return in_array($this->adjustment_type, ['initial', 'increase', 'restock']) ||
+        return in_array($this->adjustment_type, ['initial', 'restock', 'return']) ||
                $this->quantity > 0;
     }
 
@@ -101,7 +102,7 @@ class InventoryAdjustment extends Model
      */
     public function isDecrease(): bool
     {
-        return in_array($this->adjustment_type, ['decrease', 'usage']) ||
+        return in_array($this->adjustment_type, ['sale', 'damage', 'loss']) ||
                $this->quantity < 0;
     }
 
@@ -111,9 +112,9 @@ class InventoryAdjustment extends Model
     public function getColorClassAttribute(): string
     {
         return match($this->adjustment_type) {
-            'initial', 'increase', 'restock' => 'text-green-600',
-            'decrease', 'usage' => 'text-red-600',
-            'set' => 'text-blue-600',
+            'initial', 'restock', 'return' => 'text-green-600',
+            'sale', 'damage', 'loss' => 'text-red-600',
+            'correction' => 'text-blue-600',
             default => 'text-gray-600',
         };
     }

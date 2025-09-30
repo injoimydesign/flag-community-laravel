@@ -86,7 +86,7 @@ class FlagProductController extends Controller
         // Get filter options
         $flagTypes = FlagType::active()->orderBy('name')->get();
         $flagSizes = FlagSize::active()->orderBy('name')->get();
-        
+
         // Get categories from flag types
         $categories = FlagType::distinct()->pluck('category')->filter()->sort()->values();
 
@@ -121,6 +121,9 @@ class FlagProductController extends Controller
 
     /**
      * Store a newly created flag product in storage.
+     *
+     * FIXES:
+     * 1. Changed active assignment to convert string to boolean
      */
     public function store(Request $request)
     {
@@ -132,7 +135,7 @@ class FlagProductController extends Controller
             'cost_per_unit' => 'required|numeric|min:0',
             'current_inventory' => 'required|integer|min:0',
             'low_inventory_threshold' => 'required|integer|min:0',
-            'active' => 'boolean',
+            'active' => 'required|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -155,19 +158,21 @@ class FlagProductController extends Controller
         $flagProduct = FlagProduct::create([
             'flag_type_id' => $request->flag_type_id,
             'flag_size_id' => $request->flag_size_id,
-            'one_time_price' => $request->one_time_price * 100, // Convert to cents
+            'one_time_price' => $request->one_time_price * 100,
             'annual_subscription_price' => $request->annual_subscription_price * 100,
             'cost_per_unit' => $request->cost_per_unit * 100,
             'current_inventory' => $request->current_inventory,
             'low_inventory_threshold' => $request->low_inventory_threshold,
-            'active' => $request->has('active'),
+            'active' => $request->active == 1,  // Changed from $request->has('active')
         ]);
 
-        // Log initial inventory
+        // Log initial inventory with correct column names
         InventoryAdjustment::create([
             'flag_product_id' => $flagProduct->id,
             'adjustment_type' => 'initial',
             'quantity' => $request->current_inventory,
+            'previous_quantity' => 0,  // Changed from 'previous_inventory'
+            'new_quantity' => $request->current_inventory,  // Changed from 'new_inventory'
             'reason' => 'Initial inventory setup',
             'adjusted_by' => auth()->id(),
         ]);
@@ -218,6 +223,10 @@ class FlagProductController extends Controller
 
     /**
      * Update the specified flag product in storage.
+     *
+     * FIXES:
+     * 1. Changed 'active' validation to 'required|boolean'
+     * 2. Changed active assignment to convert string to boolean
      */
     public function update(Request $request, FlagProduct $flagProduct)
     {
@@ -228,7 +237,7 @@ class FlagProductController extends Controller
             'annual_subscription_price' => 'required|numeric|min:0',
             'cost_per_unit' => 'required|numeric|min:0',
             'low_inventory_threshold' => 'required|integer|min:0',
-            'active' => 'boolean',
+            'active' => 'required|boolean',  // Changed from 'boolean' to 'required|boolean'
         ]);
 
         if ($validator->fails()) {
@@ -256,12 +265,13 @@ class FlagProductController extends Controller
             'annual_subscription_price' => $request->annual_subscription_price * 100,
             'cost_per_unit' => $request->cost_per_unit * 100,
             'low_inventory_threshold' => $request->low_inventory_threshold,
-            'active' => $request->has('active'),
+            'active' => $request->active == 1,  // Changed from $request->has('active')
         ]);
 
         return redirect()->route('admin.flag-products.show', $flagProduct)
             ->with('success', 'Flag product updated successfully.');
     }
+
 
     /**
      * Remove the specified flag product from storage.
@@ -282,56 +292,91 @@ class FlagProductController extends Controller
 
     /**
      * Adjust inventory for a flag product.
+     *
+     * FIXES:
+     * 1. Changed 'previous_inventory' to 'previous_quantity'
+     * 2. Changed 'new_inventory' to 'new_quantity'
+     * 3. Map adjustment_type to match database enum values
      */
-    public function adjustInventory(Request $request, FlagProduct $flagProduct)
-    {
-        $validator = Validator::make($request->all(), [
-            'adjustment_type' => 'required|in:increase,decrease,set',
-            'quantity' => 'required|integer|min:1',
-            'reason' => 'required|string|max:255',
-        ]);
+     public function adjustInventory(Request $request, FlagProduct $flagProduct)
+ {
+     $validator = Validator::make($request->all(), [
+         'adjustment_type' => 'required|in:increase,decrease,set',
+         'quantity' => 'required|integer|min:1',
+         'reason' => 'required|string|max:255',
+     ]);
 
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
-        }
+     if ($validator->fails()) {
+         // Handle JSON requests differently
+         if ($request->expectsJson()) {
+             return response()->json([
+                 'success' => false,
+                 'message' => 'Validation failed',
+                 'errors' => $validator->errors()
+             ], 422);
+         }
 
-        $oldInventory = $flagProduct->current_inventory;
-        $quantity = $request->quantity;
+         return redirect()->back()
+             ->withErrors($validator)
+             ->withInput();
+     }
 
-        switch ($request->adjustment_type) {
-            case 'increase':
-                $newInventory = $oldInventory + $quantity;
-                $adjustmentQuantity = $quantity;
-                break;
-            case 'decrease':
-                $newInventory = max(0, $oldInventory - $quantity);
-                $adjustmentQuantity = -$quantity;
-                break;
-            case 'set':
-                $newInventory = $quantity;
-                $adjustmentQuantity = $quantity - $oldInventory;
-                break;
-        }
+     $oldInventory = $flagProduct->current_inventory;
+     $quantity = $request->quantity;
 
-        // Update inventory
-        $flagProduct->update(['current_inventory' => $newInventory]);
+     // Map adjustment types to database enum values
+     $dbAdjustmentType = match($request->adjustment_type) {
+         'increase' => 'restock',
+         'decrease' => 'sale',
+         'set' => 'correction',
+         default => 'correction'
+     };
 
-        // Log adjustment
-        InventoryAdjustment::create([
-            'flag_product_id' => $flagProduct->id,
-            'adjustment_type' => $request->adjustment_type,
-            'quantity' => $adjustmentQuantity,
-            'previous_inventory' => $oldInventory,
-            'new_inventory' => $newInventory,
-            'reason' => $request->reason,
-            'adjusted_by' => auth()->id(),
-        ]);
+     switch ($request->adjustment_type) {
+         case 'increase':
+             $newInventory = $oldInventory + $quantity;
+             $adjustmentQuantity = $quantity;
+             break;
+         case 'decrease':
+             $newInventory = max(0, $oldInventory - $quantity);
+             $adjustmentQuantity = -$quantity;
+             break;
+         case 'set':
+             $newInventory = $quantity;
+             $adjustmentQuantity = $quantity - $oldInventory;
+             break;
+     }
 
-        return redirect()->back()
-            ->with('success', 'Inventory adjusted successfully.');
-    }
+     // Update inventory
+     $flagProduct->update(['current_inventory' => $newInventory]);
+
+     // Log adjustment with correct column names
+     InventoryAdjustment::create([
+         'flag_product_id' => $flagProduct->id,
+         'adjustment_type' => $dbAdjustmentType,
+         'quantity' => $adjustmentQuantity,
+         'previous_quantity' => $oldInventory,
+         'new_quantity' => $newInventory,
+         'reason' => $request->reason,
+         'adjusted_by' => auth()->id(),
+     ]);
+
+     // Handle JSON requests
+     if ($request->expectsJson()) {
+         return response()->json([
+             'success' => true,
+             'message' => 'Inventory adjusted successfully.',
+             'data' => [
+                 'previous_inventory' => $oldInventory,
+                 'new_inventory' => $newInventory,
+                 'adjustment' => $adjustmentQuantity
+             ]
+         ]);
+     }
+
+     return redirect()->back()
+         ->with('success', 'Inventory adjusted successfully.');
+ }
 
     /**
      * Toggle active status of flag product.
@@ -442,7 +487,7 @@ class FlagProductController extends Controller
 
         $callback = function() use ($flagProducts) {
             $file = fopen('php://output', 'w');
-            
+
             // Add CSV headers
             fputcsv($file, [
                 'Flag Type',
@@ -580,7 +625,7 @@ class FlagProductController extends Controller
     public function getMetrics(Request $request)
     {
         $period = $request->get('period', '30days');
-        
+
         switch ($period) {
             case '7days':
                 $startDate = Carbon::now()->subDays(7);
