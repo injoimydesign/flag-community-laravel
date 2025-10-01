@@ -291,92 +291,113 @@ class FlagProductController extends Controller
     }
 
     /**
-     * Adjust inventory for a flag product.
-     *
-     * FIXES:
-     * 1. Changed 'previous_inventory' to 'previous_quantity'
-     * 2. Changed 'new_inventory' to 'new_quantity'
-     * 3. Map adjustment_type to match database enum values
-     */
-     public function adjustInventory(Request $request, FlagProduct $flagProduct)
- {
-     $validator = Validator::make($request->all(), [
-         'adjustment_type' => 'required|in:increase,decrease,set',
-         'quantity' => 'required|integer|min:1',
-         'reason' => 'required|string|max:255',
-     ]);
+ * Adjust inventory for a flag product.
+ * Supports both form submissions and JSON/AJAX requests.
+ *
+ * This MUST replace the adjustInventory method in app/Http/Controllers/Admin/FlagProductController.php
+ */
+public function adjustInventory(Request $request, FlagProduct $flagProduct)
+{
+    // Add error handling wrapper to catch any exceptions
+    try {
+        $validator = Validator::make($request->all(), [
+            'adjustment_type' => 'required|in:increase,decrease,set',
+            'quantity' => 'required|integer|min:1',
+            'reason' => 'required|string|max:255',
+        ]);
 
-     if ($validator->fails()) {
-         // Handle JSON requests differently
-         if ($request->expectsJson()) {
-             return response()->json([
-                 'success' => false,
-                 'message' => 'Validation failed',
-                 'errors' => $validator->errors()
-             ], 422);
-         }
+        if ($validator->fails()) {
+            // Handle JSON/AJAX requests differently
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-         return redirect()->back()
-             ->withErrors($validator)
-             ->withInput();
-     }
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
 
-     $oldInventory = $flagProduct->current_inventory;
-     $quantity = $request->quantity;
+        $oldInventory = $flagProduct->current_inventory;
+        $quantity = $request->quantity;
 
-     // Map adjustment types to database enum values
-     $dbAdjustmentType = match($request->adjustment_type) {
-         'increase' => 'restock',
-         'decrease' => 'sale',
-         'set' => 'correction',
-         default => 'correction'
-     };
+        // Map adjustment types to database enum values
+        $dbAdjustmentType = match($request->adjustment_type) {
+            'increase' => 'restock',
+            'decrease' => 'sale',
+            'set' => 'correction',
+            default => 'correction'
+        };
 
-     switch ($request->adjustment_type) {
-         case 'increase':
-             $newInventory = $oldInventory + $quantity;
-             $adjustmentQuantity = $quantity;
-             break;
-         case 'decrease':
-             $newInventory = max(0, $oldInventory - $quantity);
-             $adjustmentQuantity = -$quantity;
-             break;
-         case 'set':
-             $newInventory = $quantity;
-             $adjustmentQuantity = $quantity - $oldInventory;
-             break;
-     }
+        switch ($request->adjustment_type) {
+            case 'increase':
+                $newInventory = $oldInventory + $quantity;
+                $adjustmentQuantity = $quantity;
+                break;
+            case 'decrease':
+                $newInventory = max(0, $oldInventory - $quantity);
+                $adjustmentQuantity = -$quantity;
+                break;
+            case 'set':
+                $newInventory = $quantity;
+                $adjustmentQuantity = $quantity - $oldInventory;
+                break;
+        }
 
-     // Update inventory
-     $flagProduct->update(['current_inventory' => $newInventory]);
+        // Update inventory
+        $flagProduct->update(['current_inventory' => $newInventory]);
 
-     // Log adjustment with correct column names
-     InventoryAdjustment::create([
-         'flag_product_id' => $flagProduct->id,
-         'adjustment_type' => $dbAdjustmentType,
-         'quantity' => $adjustmentQuantity,
-         'previous_quantity' => $oldInventory,
-         'new_quantity' => $newInventory,
-         'reason' => $request->reason,
-         'adjusted_by' => auth()->id(),
-     ]);
+        // Log adjustment with correct column names
+        InventoryAdjustment::create([
+            'flag_product_id' => $flagProduct->id,
+            'adjustment_type' => $dbAdjustmentType,
+            'quantity' => $adjustmentQuantity,
+            'previous_quantity' => $oldInventory,      // FIXED: Changed from previous_inventory
+            'new_quantity' => $newInventory,           // FIXED: Changed from new_inventory
+            'reason' => $request->reason,
+            'adjusted_by' => auth()->id(),
+        ]);
 
-     // Handle JSON requests
-     if ($request->expectsJson()) {
-         return response()->json([
-             'success' => true,
-             'message' => 'Inventory adjusted successfully.',
-             'data' => [
-                 'previous_inventory' => $oldInventory,
-                 'new_inventory' => $newInventory,
-                 'adjustment' => $adjustmentQuantity
-             ]
-         ]);
-     }
+        // Handle JSON/AJAX requests
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Inventory adjusted successfully.',
+                'data' => [
+                    'previous_inventory' => $oldInventory,
+                    'new_inventory' => $newInventory,
+                    'adjustment' => $adjustmentQuantity
+                ]
+            ]);
+        }
 
-     return redirect()->back()
-         ->with('success', 'Inventory adjusted successfully.');
- }
+        return redirect()->back()
+            ->with('success', 'Inventory adjusted successfully.');
+
+    } catch (\Exception $e) {
+        // Log the error for debugging
+        \Log::error('Inventory adjustment error: ' . $e->getMessage(), [
+            'product_id' => $flagProduct->id,
+            'request_data' => $request->all(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        // Handle JSON/AJAX requests
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while adjusting inventory: ' . $e->getMessage()
+            ], 500);
+        }
+
+        return redirect()->back()
+            ->with('error', 'An error occurred while adjusting inventory.')
+            ->withInput();
+    }
+}
 
     /**
      * Toggle active status of flag product.

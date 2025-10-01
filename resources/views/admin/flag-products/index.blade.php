@@ -271,35 +271,14 @@
     </div>
 
     <!-- Inventory Adjustment Modal -->
-    <div x-show="showInventoryModal"
-     x-cloak
-     class="fixed z-10 inset-0 overflow-y-auto"
-     aria-labelledby="modal-title"
-     role="dialog"
-     aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div x-show="showInventoryModal"
-             x-transition:enter="ease-out duration-300"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             x-transition:leave="ease-in duration-200"
-             x-transition:leave-start="opacity-100"
-             x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-             aria-hidden="true"
-             @click="showInventoryModal = false"></div>
+    <div x-show="showInventoryModal" x-cloak class="fixed z-10 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div x-show="showInventoryModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showInventoryModal = false">
+          </div>
 
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-        <div x-show="showInventoryModal"
-             x-transition:enter="ease-out duration-300"
-             x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-             x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-             x-transition:leave="ease-in duration-200"
-             x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-             x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-             class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-
+        <div x-show="showInventoryModal" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
             <form @submit.prevent="submitInventoryAdjustment()">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <div class="sm:flex sm:items-start">
@@ -320,24 +299,15 @@
                                     </label>
                                     <div class="space-y-2">
                                         <label class="inline-flex items-center">
-                                            <input type="radio"
-                                                   x-model="inventoryForm.adjustment_type"
-                                                   value="increase"
-                                                   class="form-radio text-indigo-600">
+                                            <input type="radio" x-model="inventoryForm.adjustment_type" value="increase" class="form-radio text-indigo-600">
                                             <span class="ml-2 text-sm text-gray-700">Increase (Add stock)</span>
                                         </label>
                                         <label class="inline-flex items-center ml-6">
-                                            <input type="radio"
-                                                   x-model="inventoryForm.adjustment_type"
-                                                   value="decrease"
-                                                   class="form-radio text-indigo-600">
+                                            <input type="radio" x-model="inventoryForm.adjustment_type" value="decrease" class="form-radio text-indigo-600">
                                             <span class="ml-2 text-sm text-gray-700">Decrease (Remove stock)</span>
                                         </label>
                                         <label class="inline-flex items-center ml-6">
-                                            <input type="radio"
-                                                   x-model="inventoryForm.adjustment_type"
-                                                   value="set"
-                                                   class="form-radio text-indigo-600">
+                                            <input type="radio" x-model="inventoryForm.adjustment_type" value="set" class="form-radio text-indigo-600">
                                             <span class="ml-2 text-sm text-gray-700">Set (Set exact amount)</span>
                                         </label>
                                     </div>
@@ -348,12 +318,7 @@
                                     <label class="block text-sm font-medium text-gray-700">
                                         Quantity <span class="text-red-500">*</span>
                                     </label>
-                                    <input type="number"
-                                           x-model="inventoryForm.quantity"
-                                           min="1"
-                                           placeholder="Enter quantity"
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                           required>
+                                    <input type="number" x-model="inventoryForm.quantity" min="1" placeholder="Enter quantity" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" required>
                                     <p class="mt-1 text-xs text-gray-500">
                                         <span x-show="inventoryForm.adjustment_type === 'increase'">Amount to add to current inventory</span>
                                         <span x-show="inventoryForm.adjustment_type === 'decrease'">Amount to remove from current inventory</span>
@@ -366,11 +331,7 @@
                                     <label class="block text-sm font-medium text-gray-700">
                                         Reason <span class="text-red-500">*</span>
                                     </label>
-                                    <input type="text"
-                                           x-model="inventoryForm.reason"
-                                           placeholder="e.g., Restock from supplier, Damaged goods, Physical count adjustment"
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                           required>
+                                    <input type="text" x-model="inventoryForm.reason" placeholder="e.g., Restock from supplier, Damaged goods, Physical count adjustment" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" required>
                                     <p class="mt-1 text-xs text-gray-500">Provide a brief explanation for this adjustment</p>
                                 </div>
                             </div>
@@ -378,39 +339,33 @@
                     </div>
                 </div>
                 <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                    <button type="submit"
-                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">
                         Adjust Inventory
                     </button>
-                    <button type="button"
-                            @click="showInventoryModal = false"
-                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    <button type="button" @click="showInventoryModal = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                         Cancel
                     </button>
                 </div>
             </form>
         </div>
+      </div>
     </div>
-</div>
-
-<style>
-    [x-cloak] {
-        display: none !important;
-    }
-</style>
 </div>
 
 @push('scripts')
 <script>
+// This script should be in the @push('scripts') section of resources/views/admin/flag-products/index.blade.php
+// Replace the existing flagProducts() function with this corrected version
+
 function flagProducts() {
     return {
         selectedProducts: [],
         showInventoryModal: false,
         inventoryProductId: null,
         inventoryForm: {
-            adjustment_type: 'increase',  // CHANGED: Use adjustment_type instead of just 'adjustment'
-            quantity: '',                 // CHANGED: Use quantity instead of 'adjustment'
-            reason: '',                   // Keep this but make it required text
+            adjustment_type: 'increase',
+            quantity: '',
+            reason: '',
             customReason: ''
         },
 
@@ -456,15 +411,15 @@ function flagProducts() {
             this.showInventoryModal = true;
         },
 
-        submitInventoryAdjustment() {
-            // FIXED: Send the correct field names that match the controller validation
+        async submitInventoryAdjustment() {
+            // Build form data
             const formData = {
                 adjustment_type: this.inventoryForm.adjustment_type,
                 quantity: parseInt(this.inventoryForm.quantity),
                 reason: this.inventoryForm.reason || this.inventoryForm.customReason
             };
 
-            // Validation
+            // Client-side validation
             if (!formData.quantity || formData.quantity < 1) {
                 alert('Please enter a valid quantity (minimum 1)');
                 return;
@@ -475,35 +430,50 @@ function flagProducts() {
                 return;
             }
 
-            fetch(`/admin/flag-products/${this.inventoryProductId}/adjust-inventory`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify(formData)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(err => {
-                        throw new Error(err.message || 'Server error');
-                    });
+            console.log('Submitting adjustment:', formData); // Debug log
+
+            try {
+                const response = await fetch(`/admin/flag-products/${this.inventoryProductId}/adjust-inventory`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest' // Helps Laravel identify AJAX requests
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                console.log('Response status:', response.status); // Debug log
+                console.log('Response headers:', response.headers.get('content-type')); // Debug log
+
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response received:', text.substring(0, 500));
+                    throw new Error('Server returned non-JSON response. Check console for details.');
                 }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
+
+                const data = await response.json();
+                console.log('Response data:', data); // Debug log
+
+                if (response.ok && data.success) {
                     this.showInventoryModal = false;
                     location.reload();
                 } else {
-                    alert(data.message || 'Error adjusting inventory');
+                    // Handle validation errors
+                    if (data.errors) {
+                        const errorMessages = Object.values(data.errors).flat().join('\n');
+                        alert('Validation errors:\n' + errorMessages);
+                    } else {
+                        alert(data.message || 'Error adjusting inventory');
+                    }
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
+            } catch (error) {
+                console.error('Error details:', error);
                 alert('Error adjusting inventory: ' + error.message);
-            });
+            }
         },
 
         bulkUpdateInventory() {

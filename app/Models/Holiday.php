@@ -18,18 +18,27 @@ class Holiday extends Model
         'name',
         'slug',
         'description',
-        'frequency',
-        'dates',
+        'date',
+        'recurring',
+        'placement_days_before',
+        'removal_days_after',
         'active',
         'sort_order',
+        'frequency',
+        'dates',
     ];
 
     /**
      * The attributes that should be cast.
      */
     protected $casts = [
-        'dates' => 'array',
+        'date' => 'date',
+        'recurring' => 'boolean',
         'active' => 'boolean',
+        'dates' => 'array',
+        'placement_days_before' => 'integer',
+        'removal_days_after' => 'integer',
+        'sort_order' => 'integer',
     ];
 
     // Relationships
@@ -40,6 +49,15 @@ class Holiday extends Model
     public function flagPlacements()
     {
         return $this->hasMany(FlagPlacement::class);
+    }
+
+    /**
+     * Alias for flagPlacements() - for backward compatibility.
+     * FIXED: Added this method to match controller usage
+     */
+    public function placements()
+    {
+        return $this->flagPlacements();
     }
 
     /**
@@ -75,14 +93,8 @@ class Holiday extends Model
     {
         $year = $year ?: date('Y');
         $today = Carbon::now()->format('Y-m-d');
-        
-        return $query->active()->where(function ($q) use ($year, $today) {
-            $q->whereJsonContains('dates', $year)
-              ->orWhere(function ($subQ) use ($today) {
-                  // For holidays with specific dates in current year
-                  $subQ->whereRaw('JSON_EXTRACT(dates, "$[0]") >= ?', [$today]);
-              });
-        });
+
+        return $query->active()->where('date', '>=', $today);
     }
 
     // Static methods
@@ -92,9 +104,10 @@ class Holiday extends Model
      */
     public static function getHolidaysForYear($year)
     {
-        return self::active()->ordered()->get()->filter(function ($holiday) use ($year) {
-            return $holiday->isActiveInYear($year);
-        });
+        return self::active()
+            ->ordered()
+            ->whereYear('date', $year)
+            ->get();
     }
 
     /**
@@ -102,13 +115,10 @@ class Holiday extends Model
      */
     public static function getNextHoliday()
     {
-        $holidays = self::upcoming()->get();
-        $today = Carbon::now();
-        
-        return $holidays->sortBy(function ($holiday) use ($today) {
-            $nextDate = $holiday->getNextDateAfter($today);
-            return $nextDate ? $nextDate->timestamp : PHP_INT_MAX;
-        })->first();
+        return self::active()
+            ->where('date', '>=', Carbon::now())
+            ->orderBy('date')
+            ->first();
     }
 
     // Helper methods
@@ -118,108 +128,101 @@ class Holiday extends Model
      */
     public function isActiveInYear($year)
     {
-        if ($this->frequency === 'annual') {
-            return true;
+        if (!$this->recurring) {
+            return $this->date->year == $year;
         }
-        
-        // For special holidays like Patriots Day (every 5 years)
-        if ($this->frequency === 'special') {
-            return in_array($year, $this->dates ?: []);
-        }
-        
-        return false;
+
+        // Recurring holidays are active every year
+        return true;
     }
 
     /**
-     * Get the holiday date for a specific year.
-     */
-    public function getDateForYear($year)
-    {
-        if ($this->frequency === 'annual') {
-            // Calculate date based on holiday rules
-            return $this->calculateAnnualDate($year);
-        }
-        
-        if ($this->frequency === 'special') {
-            $yearData = collect($this->dates)->firstWhere('year', $year);
-            return $yearData ? Carbon::parse($yearData['date']) : null;
-        }
-        
-        return null;
-    }
-
-    /**
-     * Get next occurrence of this holiday after a given date.
+     * Get the next occurrence date after a given date.
      */
     public function getNextDateAfter(Carbon $date)
     {
-        $year = $date->year;
-        
-        // Check current year first
-        $holidayDate = $this->getDateForYear($year);
-        if ($holidayDate && $holidayDate->gt($date)) {
+        if (!$this->recurring) {
+            return $this->date->gt($date) ? $this->date : null;
+        }
+
+        // For recurring holidays, get next occurrence
+        $holidayDate = $this->date->copy()->year($date->year);
+
+        if ($holidayDate->gt($date)) {
             return $holidayDate;
         }
-        
-        // Check next year
-        $nextYearDate = $this->getDateForYear($year + 1);
-        return $nextYearDate;
+
+        // Return next year's occurrence
+        return $holidayDate->addYear();
     }
 
     /**
-     * Calculate annual holiday date for a given year.
-     */
-    private function calculateAnnualDate($year)
-    {
-        // This would contain logic for calculating holiday dates
-        // For now, using static dates stored in the dates array
-        $holidayDates = [
-            'presidents-day' => Carbon::parse("third monday of february $year"),
-            'memorial-day' => Carbon::parse("last monday of may $year"),
-            'flag-day' => Carbon::createFromDate($year, 6, 14),
-            'independence-day' => Carbon::createFromDate($year, 7, 4),
-            'veterans-day' => Carbon::createFromDate($year, 11, 11),
-        ];
-        
-        return $holidayDates[$this->slug] ?? null;
-    }
-
-    /**
-     * Get placement date (usually a few days before the holiday).
-     */
-    public function getPlacementDateForYear($year)
-    {
-        $holidayDate = $this->getDateForYear($year);
-        if (!$holidayDate) return null;
-        
-        // Place flags 2 days before the holiday
-        return $holidayDate->copy()->subDays(2);
-    }
-
-    /**
-     * Get removal date (usually a few days after the holiday).
-     */
-    public function getRemovalDateForYear($year)
-    {
-        $holidayDate = $this->getDateForYear($year);
-        if (!$holidayDate) return null;
-        
-        // Remove flags 3 days after the holiday
-        return $holidayDate->copy()->addDays(3);
-    }
-
-    /**
-     * Get all placement dates for subscriptions.
+     * Get placement and removal dates for a specific year.
      */
     public function getPlacementDatesForYear($year)
     {
-        $holidayDate = $this->getDateForYear($year);
-        if (!$holidayDate) return [];
-        
+        $holidayDate = $this->date->copy()->year($year);
+
         return [
             'holiday_date' => $holidayDate,
-            'placement_date' => $this->getPlacementDateForYear($year),
-            'removal_date' => $this->getRemovalDateForYear($year),
+            'placement_date' => $holidayDate->copy()->subDays($this->placement_days_before),
+            'removal_date' => $holidayDate->copy()->addDays($this->removal_days_after),
         ];
+    }
+
+    /**
+     * Get formatted name with date.
+     */
+    public function getFullNameAttribute()
+    {
+        return $this->name . ' (' . $this->date->format('M j') . ')';
+    }
+
+    /**
+     * Check if holiday is upcoming.
+     */
+    public function isUpcoming()
+    {
+        return $this->date->isFuture();
+    }
+
+    /**
+     * Check if holiday is past.
+     */
+    public function isPast()
+    {
+        return $this->date->isPast();
+    }
+
+    /**
+     * Get days until holiday.
+     */
+    public function getDaysUntilAttribute()
+    {
+        return Carbon::now()->diffInDays($this->date, false);
+    }
+
+    /**
+     * Get placement count for this holiday.
+     */
+    public function getPlacementCount()
+    {
+        return $this->flagPlacements()->count();
+    }
+
+    /**
+     * Get scheduled placement count.
+     */
+    public function getScheduledPlacementCount()
+    {
+        return $this->flagPlacements()->where('status', 'scheduled')->count();
+    }
+
+    /**
+     * Get completed placement count.
+     */
+    public function getCompletedPlacementCount()
+    {
+        return $this->flagPlacements()->where('status', 'placed')->count();
     }
 }
