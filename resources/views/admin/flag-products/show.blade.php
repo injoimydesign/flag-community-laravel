@@ -1,3 +1,6 @@
+{{-- resources/views/admin/flag-products/show.blade.php --}}
+{{-- COMPLETE implementation with working DELETE button --}}
+
 @extends('layouts.admin')
 
 @section('title', 'Flag Product Details - Admin Dashboard')
@@ -102,12 +105,14 @@
                         </button>
                     </div>
 
+                    {{-- FIXED: Complete delete form with proper closing tags and button --}}
                     <form method="POST" action="{{ route('admin.flag-products.destroy', $flagProduct) }}"
                           onsubmit="return confirm('Are you sure you want to delete this product? This action cannot be undone.');">
                         @csrf
                         @method('DELETE')
                         <button type="submit"
-                                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                @if($stats['active_subscriptions'] > 0) disabled title="Cannot delete - has active subscriptions" @endif>
                             <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 011-1h2a1 1 0 011 1v3M4 7h16" />
                             </svg>
@@ -117,21 +122,50 @@
                 </div>
             </div>
 
-            <!-- Recent Inventory Adjustments -->
-            @if(isset($recentAdjustments) && $recentAdjustments->count() > 0)
-            <div class="bg-white shadow rounded-lg overflow-hidden">
+            <!-- Usage Statistics -->
+            <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Usage Statistics</h3>
+                </div>
+                <div class="px-6 py-4">
+                    <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Active Subscriptions</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['active_subscriptions'] }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Total Placements</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['total_placements'] }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Monthly Usage</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['monthly_usage'] }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Inventory Value</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900">${{ number_format($stats['inventory_value'], 2) }}</dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Recent Inventory Adjustments -->
+            @if($recentAdjustments->count() > 0)
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">Recent Inventory Adjustments</h3>
+                    <a href="{{ route('admin.flag-products.inventory-history', $flagProduct) }}"
+                       class="text-sm text-indigo-600 hover:text-indigo-900">View All</a>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adjusted By</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">By</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -141,16 +175,20 @@
                                     {{ $adjustment->created_at->format('M j, Y g:i A') }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 py-1 text-xs font-semibold rounded-full
-                                        {{ $adjustment->adjustment_type === 'increase' ? 'bg-green-100 text-green-800' : ($adjustment->adjustment_type === 'decrease' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800') }}">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {{ $adjustment->adjustment_type === 'increase' ? 'bg-green-100 text-green-800' :
+                                           ($adjustment->adjustment_type === 'decrease' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800') }}">
                                         {{ ucfirst($adjustment->adjustment_type) }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ $adjustment->quantity >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium
+                                    {{ $adjustment->quantity > 0 ? 'text-green-600' : 'text-red-600' }}">
                                     {{ $adjustment->quantity > 0 ? '+' : '' }}{{ $adjustment->quantity }}
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">{{ $adjustment->reason }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <td class="px-6 py-4 text-sm text-gray-900">
+                                    {{ $adjustment->reason }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ $adjustment->adjustedBy->name ?? 'System' }}
                                 </td>
                             </tr>
@@ -164,21 +202,31 @@
 
         <!-- Sidebar -->
         <div class="space-y-6">
-            <!-- Statistics -->
+            <!-- Quick Stats -->
             <div class="bg-white shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Statistics</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Info</h3>
                 <dl class="space-y-4">
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Active Subscriptions</dt>
-                        <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['active_subscriptions'] ?? 0 }}</dd>
+                        <dt class="text-sm font-medium text-gray-500">Category</dt>
+                        <dd class="mt-1">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                {{ $flagProduct->flagType->category === 'us' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800' }}">
+                                {{ ucfirst($flagProduct->flagType->category) }}
+                            </span>
+                        </dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Total Placements</dt>
-                        <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['total_placements'] ?? 0 }}</dd>
+                        <dt class="text-sm font-medium text-gray-500">Flag Type</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            <a href="{{ route('admin.flag-types.show', $flagProduct->flagType) }}"
+                               class="text-indigo-600 hover:text-indigo-900">
+                                {{ $flagProduct->flagType->name }}
+                            </a>
+                        </dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Monthly Usage</dt>
-                        <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $stats['monthly_usage'] ?? 0 }}</dd>
+                        <dt class="text-sm font-medium text-gray-500">Size</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $flagProduct->flagSize->name }} ({{ $flagProduct->flagSize->dimensions }})</dd>
                     </div>
                 </dl>
             </div>
@@ -187,112 +235,70 @@
             <div class="bg-white shadow rounded-lg p-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
                 <div class="space-y-3">
-                    <a href="{{ route('admin.flag-types.show', $flagProduct->flagType) }}"
-                       class="block w-full text-center px-4 py-2 border border-indigo-300 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        View Flag Type
-                    </a>
-                    <a href="{{ route('admin.flag-products.index') }}"
+                    <button @click="showAdjustInventory = true"
+                            class="block w-full text-center px-4 py-2 border border-indigo-300 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Adjust Inventory
+                    </button>
+                    <a href="{{ route('admin.flag-products.inventory-history', $flagProduct) }}"
                        class="block w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        View All Products
+                        View Inventory History
                     </a>
+                    <form method="POST" action="{{ route('admin.flag-products.duplicate', $flagProduct) }}">
+                        @csrf
+                        <button type="submit"
+                                class="block w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Duplicate Product
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Inventory Adjustment Modal -->
-    <div x-show="showAdjustInventory"
-         x-cloak
-         class="fixed z-10 inset-0 overflow-y-auto"
-         aria-labelledby="modal-title"
-         role="dialog"
-         aria-modal="true">
+    <!-- Adjust Inventory Modal -->
+    <div x-show="showAdjustInventory" x-cloak class="fixed z-10 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div x-show="showAdjustInventory"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0"
-                 x-transition:enter-end="opacity-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100"
-                 x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-                 aria-hidden="true"
-                 @click="showAdjustInventory = false"></div>
+            <div x-show="showAdjustInventory" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showAdjustInventory = false"></div>
 
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-            <div x-show="showAdjustInventory"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-
+            <div x-show="showAdjustInventory" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
                 <form method="POST" action="{{ route('admin.flag-products.adjust-inventory', $flagProduct) }}">
                     @csrf
                     <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                         <div class="sm:flex sm:items-start">
-                            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">
-                                <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
+                                <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                 </svg>
                             </div>
-                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
+                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                                 <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
                                     Adjust Inventory
                                 </h3>
                                 <div class="mt-4 space-y-4">
                                     <div>
-                                        <p class="text-sm text-gray-500 mb-2">Current inventory: <span class="font-semibold text-gray-900">{{ $flagProduct->current_inventory }}</span></p>
+                                        <label class="block text-sm font-medium text-gray-700">Current Inventory</label>
+                                        <p class="mt-1 text-2xl font-semibold text-gray-900">{{ $flagProduct->current_inventory }}</p>
                                     </div>
-
-                                    <!-- Adjustment Type -->
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                                            Adjustment Type <span class="text-red-500">*</span>
-                                        </label>
-                                        <div class="space-y-2">
-                                            <label class="inline-flex items-center">
-                                                <input type="radio" name="adjustment_type" value="increase" required class="form-radio text-indigo-600" checked>
-                                                <span class="ml-2 text-sm text-gray-700">Increase (Add stock)</span>
-                                            </label>
-                                            <label class="inline-flex items-center ml-6">
-                                                <input type="radio" name="adjustment_type" value="decrease" required class="form-radio text-indigo-600">
-                                                <span class="ml-2 text-sm text-gray-700">Decrease (Remove stock)</span>
-                                            </label>
-                                            <label class="inline-flex items-center ml-6">
-                                                <input type="radio" name="adjustment_type" value="set" required class="form-radio text-indigo-600">
-                                                <span class="ml-2 text-sm text-gray-700">Set (Set exact amount)</span>
-                                            </label>
-                                        </div>
+                                        <label for="adjustment_type" class="block text-sm font-medium text-gray-700">Adjustment Type</label>
+                                        <select name="adjustment_type" id="adjustment_type" required
+                                                class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="increase">Add to Inventory</option>
+                                            <option value="decrease">Remove from Inventory</option>
+                                            <option value="set">Set Inventory To</option>
+                                        </select>
                                     </div>
-
-                                    <!-- Quantity -->
                                     <div>
-                                        <label for="quantity" class="block text-sm font-medium text-gray-700">
-                                            Quantity <span class="text-red-500">*</span>
-                                        </label>
-                                        <input type="number"
-                                               name="quantity"
-                                               id="quantity"
-                                               min="1"
-                                               required
-                                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+                                        <input type="number" name="quantity" id="quantity" min="0" required
+                                               class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
                                     </div>
-
-                                    <!-- Reason -->
                                     <div>
-                                        <label for="reason" class="block text-sm font-medium text-gray-700">
-                                            Reason <span class="text-red-500">*</span>
-                                        </label>
-                                        <input type="text"
-                                               name="reason"
-                                               id="reason"
-                                               required
-                                               placeholder="e.g., Restock from supplier, Damaged goods, Physical count adjustment"
-                                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <label for="reason" class="block text-sm font-medium text-gray-700">Reason</label>
+                                        <textarea name="reason" id="reason" rows="3" required
+                                                  class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -303,8 +309,7 @@
                                 class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">
                             Adjust Inventory
                         </button>
-                        <button type="button"
-                                @click="showAdjustInventory = false"
+                        <button type="button" @click="showAdjustInventory = false"
                                 class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                             Cancel
                         </button>
@@ -315,17 +320,13 @@
     </div>
 </div>
 
-<style>
-    [x-cloak] {
-        display: none !important;
-    }
-</style>
-
+@push('scripts')
 <script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('productDetail', () => ({
+function productDetail() {
+    return {
         showAdjustInventory: false
-    }))
-})
+    }
+}
 </script>
+@endpush
 @endsection

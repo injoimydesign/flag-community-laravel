@@ -14,29 +14,33 @@ class Subscription extends Model
     /**
      * The attributes that are mass assignable.
      */
-    protected $fillable = [
-        'user_id',
-        'stripe_subscription_id',
-        'type',
-        'status',
-        'total_amount',
-        'start_date',
-        'end_date',
-        'canceled_at',
-        'selected_holidays',
-        'special_instructions',
-    ];
+     protected $fillable = [
+         'user_id',
+         'stripe_subscription_id',
+         'stripe_payment_intent_id',  // ADD THIS
+         'type',
+         'status',
+         'total_amount',
+         'start_date',
+         'end_date',
+         'next_billing_date',  // ADD THIS
+         'canceled_at',
+         'selected_holidays',
+         'special_instructions',
+         'notes',  // ADD THIS
+     ];
 
     /**
      * The attributes that should be cast.
      */
-    protected $casts = [
-        'total_amount' => 'decimal:2',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'canceled_at' => 'datetime',
-        'selected_holidays' => 'array',
-    ];
+     protected $casts = [
+         'total_amount' => 'integer',  // Change from 'decimal:2' to 'integer' (stores in cents)
+         'start_date' => 'date',
+         'end_date' => 'date',
+         'next_billing_date' => 'date',  // ADD THIS
+         'canceled_at' => 'datetime',
+         'selected_holidays' => 'array',
+     ];
 
     // Relationships
 
@@ -115,8 +119,8 @@ class Subscription extends Model
      */
     public function isActive()
     {
-        return $this->status === 'active' && 
-               $this->start_date <= Carbon::now() && 
+        return $this->status === 'active' &&
+               $this->start_date <= Carbon::now() &&
                $this->end_date >= Carbon::now();
     }
 
@@ -133,7 +137,7 @@ class Subscription extends Model
      */
     public function isExpiringSoon($days = 30)
     {
-        return $this->isActive() && 
+        return $this->isActive() &&
                $this->end_date <= Carbon::now()->addDays($days);
     }
 
@@ -145,7 +149,7 @@ class Subscription extends Model
         if (!$this->isActive()) {
             return 0;
         }
-        
+
         return Carbon::now()->diffInDays($this->end_date, false);
     }
 
@@ -228,9 +232,9 @@ class Subscription extends Model
                 }
 
                 $placementDates = $holiday->getPlacementDatesForYear($year);
-                
+
                 // Skip if placement date is before subscription start or after end
-                if ($placementDates['placement_date'] < $this->start_date || 
+                if ($placementDates['placement_date'] < $this->start_date ||
                     $placementDates['placement_date'] > $this->end_date) {
                     continue;
                 }
@@ -307,7 +311,7 @@ class Subscription extends Model
         }
 
         $newEndDate = $this->calculateRenewalDate();
-        
+
         // Create new subscription for renewal
         $renewalSubscription = self::create([
             'user_id' => $this->user_id,

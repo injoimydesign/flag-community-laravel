@@ -29,7 +29,7 @@ class SubscriptionController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Subscription::with(['user', 'flagProduct']);
+        $query = Subscription::with(['user', 'items.flagProduct']);
 
         // Apply filters
         if ($request->has('status') && $request->status !== '') {
@@ -60,7 +60,7 @@ class SubscriptionController extends Controller
         // Sort
         $sortBy = $request->get('sort_by', 'created_at');
         $sortOrder = $request->get('sort_order', 'desc');
-        
+
         $allowedSorts = ['created_at', 'status', 'next_billing_date', 'total_amount'];
         if (in_array($sortBy, $allowedSorts)) {
             $query->orderBy($sortBy, $sortOrder);
@@ -84,22 +84,40 @@ class SubscriptionController extends Controller
     /**
      * Display the specified subscription.
      */
-    public function show(Subscription $subscription)
-    {
-        $subscription->load(['user', 'flagProduct', 'placements']);
+     public function show(Subscription $subscription)
+   {
+       // FIXED: Load items with nested relationships
+       $subscription->load([
+           'user',
+           'items.flagProduct.flagType',
+           'items.flagProduct.flagSize',
+           'flagPlacements.holiday',
+           'flagPlacements.flagProduct.flagType',
+           'flagPlacements.flagProduct.flagSize'
+       ]);
 
-        // Get Stripe subscription details if available
-        $stripeSubscription = null;
-        if ($subscription->stripe_subscription_id) {
-            try {
-                $stripeSubscription = $this->stripeService->getSubscription($subscription->stripe_subscription_id);
-            } catch (\Exception $e) {
-                \Log::error('Failed to fetch Stripe subscription: ' . $e->getMessage());
-            }
-        }
+       // Get Stripe subscription details if available
+       $stripeSubscription = null;
+       if (!empty($subscription->stripe_subscription_id)) {
+           try {
+               if (isset($this->stripeService)) {
+                   $stripeSubscription = $this->stripeService->getSubscription($subscription->stripe_subscription_id);
+               }
+           } catch (\Exception $e) {
+               \Log::error('Failed to fetch Stripe subscription: ' . $e->getMessage());
+           }
+       }
 
-        return view('admin.subscriptions.show', compact('subscription', 'stripeSubscription'));
-    }
+       // Get statistics
+       $stats = [
+           'total_placements' => $subscription->flagPlacements->count(),
+           'completed_placements' => $subscription->flagPlacements->where('status', 'placed')->count(),
+           'scheduled_placements' => $subscription->flagPlacements->where('status', 'scheduled')->count(),
+           'cancelled_placements' => $subscription->flagPlacements->where('status', 'cancelled')->count(),
+       ];
+
+       return view('admin.subscriptions.show', compact('subscription', 'stripeSubscription', 'stats'));
+   }
 
     /**
      * Show the form for editing the specified subscription.
@@ -199,12 +217,244 @@ class SubscriptionController extends Controller
         }
     }
 
+    // app/Http/Controllers/Admin/SubscriptionController.php
+    // ADD these methods to the existing SubscriptionController
+
+    /**
+     * Show the form for creating a new subscription (order).
+     */
+    public function create()
+    {
+        // Get all customers
+        $customers = \App\Models\User::where('role', 'customer')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get();
+
+        // Get active flag products
+        $flagProducts = \App\Models\FlagProduct::with(['flagType', 'flagSize'])
+            ->where('active', true)
+            ->orderBy('flag_type_id')
+            ->orderBy('flag_size_id')
+            ->get();
+
+        // Get active holidays
+        $holidays = \App\Models\Holiday::where('active', true)
+            ->orderBy('date')
+            ->get();
+
+        // Get service areas for address validation
+        $serviceAreas = \App\Models\ServiceArea::where('active', true)->get();
+
+        return view('admin.subscriptions.create', compact(
+            'customers',
+            'flagProducts',
+            'holidays',
+            'serviceAreas'
+        ));
+    }
+
+    public function store(Request $request)
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            // Customer Information
+            'customer_type' => 'required|in:existing,new',
+            'customer_id' => 'required_if:customer_type,existing|nullable|exists:users,id',  // FIXED: Added nullable
+
+            // New Customer Fields (if creating new)
+            'first_name' => 'required_if:customer_type,new|nullable|string|max:255',
+            'last_name' => 'required_if:customer_type,new|nullable|string|max:255',
+            'email' => 'required_if:customer_type,new|nullable|email|unique:users,email',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'required_if:customer_type,new|nullable|string|max:255',
+            'city' => 'required_if:customer_type,new|nullable|string|max:100',
+            'state' => 'required_if:customer_type,new|nullable|string|max:2',
+            'zip_code' => 'required_if:customer_type,new|nullable|string|max:10',
+            'create_account' => 'nullable|boolean',
+            'password' => 'required_if:create_account,1|nullable|string|min:8|confirmed',
+
+            // Subscription Details
+            'type' => 'required|in:annual,one-time',
+            'start_date' => 'required|date',
+            'flag_products' => 'required|array|min:1',
+            'flag_products.*' => 'exists:flag_products,id',
+            'selected_holidays' => 'nullable|array',
+            'selected_holidays.*' => 'exists:holidays,id',
+            'special_instructions' => 'nullable|string|max:1000',
+
+            // Payment/Status
+            'payment_status' => 'required|in:pending,paid,comp',
+            'payment_method' => 'nullable|in:card,cash,check,comp',
+            'stripe_payment_intent_id' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+
+        try {
+            // Step 1: Get or Create Customer
+            if ($request->customer_type === 'existing') {
+                $customer = \App\Models\User::findOrFail($request->customer_id);
+            } else {
+                // Create new customer
+                $password = $request->create_account && $request->password
+                    ? \Illuminate\Support\Facades\Hash::make($request->password)
+                    : \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(16));
+
+                $customer = \App\Models\User::create([
+                    'first_name' => $request->first_name,
+                    'last_name' => $request->last_name,
+                    'email' => $request->email,
+                    'password' => $password,
+                    'phone' => $request->phone,
+                    'address' => $request->address,
+                    'city' => $request->city,
+                    'state' => strtoupper($request->state),
+                    'zip_code' => $request->zip_code,
+                    'role' => 'customer',
+                    'email_verified_at' => $request->create_account ? null : \Carbon\Carbon::now(),
+                ]);
+
+                // Geocode address and check service area
+                if (method_exists($customer, 'checkServiceAreaCoverage')) {
+                    $customer->checkServiceAreaCoverage();
+                }
+
+                // Send welcome email if account created
+                if ($request->create_account) {
+                    $customer->sendEmailVerificationNotification();
+                }
+            }
+
+            // Step 2: Calculate totals
+            $flagProducts = \App\Models\FlagProduct::whereIn('id', $request->flag_products)->get();
+            $total = 0;
+
+            foreach ($flagProducts as $product) {
+                $price = $request->type === 'annual'
+                    ? $product->annual_subscription_price
+                    : $product->one_time_price;
+                $total += $price;
+            }
+
+            // Step 3: Determine dates
+            $startDate = \Carbon\Carbon::parse($request->start_date);
+            $endDate = $request->type === 'annual'
+                ? $startDate->copy()->addYear()
+                : $startDate->copy()->addMonths(3);
+
+            // Step 4: Create Subscription
+            $status = $request->payment_status === 'paid' || $request->payment_status === 'comp'
+                ? 'active'
+                : 'pending';
+
+            $subscription = \App\Models\Subscription::create([
+                'user_id' => $customer->id,
+                'type' => $request->type,
+                'status' => $status,
+                'total_amount' => $total,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'next_billing_date' => $request->type === 'annual' ? $endDate : null,
+                'selected_holidays' => $request->selected_holidays ?? \App\Models\Holiday::active()->pluck('id')->toArray(),
+                'special_instructions' => $request->special_instructions,
+                'stripe_payment_intent_id' => $request->stripe_payment_intent_id,
+                'notes' => $request->notes,
+            ]);
+
+            // Step 5: Create Subscription Items
+            foreach ($flagProducts as $product) {
+                $price = $request->type === 'annual'
+                    ? $product->annual_subscription_price
+                    : $product->one_time_price;
+
+                \App\Models\SubscriptionItem::create([
+                    'subscription_id' => $subscription->id,
+                    'flag_product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_price' => $price,
+                    'total_price' => $price,
+                ]);
+            }
+
+            // Step 6: Generate Flag Placements if subscription is active
+            if ($status === 'active') {
+                $this->generatePlacementsForSubscription($subscription);
+            }
+
+            // Step 7: Adjust Inventory
+            foreach ($flagProducts as $product) {
+                if ($status === 'active') {
+                    // adjustInventory(quantity, type, reason, adjustedBy)
+                    $product->adjustInventory(
+                        1,
+                        'sale',
+                        "Reserved for subscription #{$subscription->id}",
+                        auth()->id()
+                    );
+                }
+            }
+
+            \Illuminate\Support\Facades\DB::commit();
+
+            return redirect()->route('admin.subscriptions.show', $subscription)
+                ->with('success', 'Order created successfully!');
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollback();
+            \Illuminate\Support\Facades\Log::error('Failed to create subscription: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->with('error', 'Failed to create order: ' . $e->getMessage())
+                ->withInput();
+        }
+    }
+
+    /**
+     * Generate flag placements for a subscription based on selected holidays.
+     */
+    private function generatePlacementsForSubscription(\App\Models\Subscription $subscription)
+    {
+        $holidays = \App\Models\Holiday::whereIn('id', $subscription->selected_holidays ?? [])
+            ->where('active', true)
+            ->get();
+
+        foreach ($holidays as $holiday) {
+            foreach ($subscription->items as $item) {
+                // Calculate placement and removal dates
+                $placementDate = \Carbon\Carbon::parse($holiday->date)
+                    ->subDays($holiday->placement_days_before);
+
+                $removalDate = \Carbon\Carbon::parse($holiday->date)
+                    ->addDays($holiday->removal_days_after);
+
+                // Only create placements for future dates
+                if ($placementDate->isFuture() || $placementDate->isToday()) {
+                    \App\Models\FlagPlacement::create([
+                        'subscription_id' => $subscription->id,
+                        'flag_product_id' => $item->flag_product_id,
+                        'holiday_id' => $holiday->id,
+                        'placement_date' => $placementDate,
+                        'removal_date' => $removalDate,
+                        'status' => 'scheduled',
+                    ]);
+                }
+            }
+        }
+    }
+
     /**
      * Export subscriptions to CSV.
      */
     public function export(Request $request)
     {
-        $query = Subscription::with(['user', 'flagProduct']);
+        $query = Subscription::with(['user', 'items.flagProduct']);
 
         // Apply same filters as index
         if ($request->has('status') && $request->status !== '') {
@@ -222,7 +472,7 @@ class SubscriptionController extends Controller
         $subscriptions = $query->get();
 
         $filename = 'subscriptions_' . Carbon::now()->format('Y-m-d_His') . '.csv';
-        
+
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
@@ -230,7 +480,7 @@ class SubscriptionController extends Controller
 
         $callback = function() use ($subscriptions) {
             $file = fopen('php://output', 'w');
-            
+
             // Headers
             fputcsv($file, [
                 'ID',
@@ -253,7 +503,7 @@ class SubscriptionController extends Controller
                     $subscription->user->name ?? 'N/A',
                     $subscription->user->email ?? 'N/A',
                     $subscription->user->address ?? 'N/A',
-                    $subscription->flagProduct->name ?? 'N/A',
+                    $subscription->items->first()->flagProduct->name ?? 'N/A',
                     $subscription->status,
                     '$' . number_format($subscription->total_amount / 100, 2),
                     $subscription->billing_frequency,
