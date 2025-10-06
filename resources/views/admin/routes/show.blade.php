@@ -5,216 +5,391 @@
 @section('page-title', 'Route Details')
 
 @section('content')
-<div class="space-y-6">
-    <!-- Back Button -->
-    <div>
-        <a href="{{ route('admin.routes.index') }}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700">
-            <svg class="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Routes
-        </a>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Main Info -->
-        <div class="lg:col-span-2 space-y-6">
-            <!-- Route Details -->
-            <div class="bg-white shadow rounded-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                    <div>
-                        <h3 class="text-lg font-medium text-gray-900">{{ $route->name }}</h3>
-                        <p class="text-sm text-gray-500">Route ID: {{ $route->id }}</p>
-                    </div>
-                    <span class="px-3 py-1 text-sm font-semibold rounded-full
-                        {{ $route->status === 'completed' ? 'bg-green-100 text-green-800' :
-                           ($route->status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                           ($route->status === 'planned' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800')) }}">
-                        {{ ucfirst(str_replace('_', ' ', $route->status)) }}
-                    </span>
-                </div>
-
-                <div class="px-6 py-4">
-                    <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Date</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $route->date->format('l, F j, Y') }}</dd>
-                        </div>
-
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Type</dt>
-                            <dd class="mt-1">
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full {{ $route->type === 'placement' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800' }}">
-                                    {{ ucfirst($route->type) }}
-                                </span>
-                            </dd>
-                        </div>
-
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Holiday</dt>
-                            <dd class="mt-1 text-sm text-gray-900">
-                                @if($route->holiday)
-                                    <a href="{{ route('admin.holidays.show', $route->holiday) }}" class="text-indigo-600 hover:text-indigo-900">
-                                        {{ $route->holiday->name }}
-                                    </a>
-                                @else
-                                    N/A
-                                @endif
-                            </dd>
-                        </div>
-
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Assigned To</dt>
-                            <dd class="mt-1 text-sm text-gray-900">
-                                {{ $route->assignedUser->name ?? 'Unassigned' }}
-                            </dd>
-                        </div>
-
-                        @if($route->notes)
-                        <div class="md:col-span-2">
-                            <dt class="text-sm font-medium text-gray-500">Notes</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $route->notes }}</dd>
-                        </div>
-                        @endif
-
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Created</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $route->created_at->format('M j, Y g:i A') }}</dd>
-                        </div>
-
-                        <div>
-                            <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $route->updated_at->format('M j, Y g:i A') }}</dd>
-                        </div>
-                    </dl>
-                </div>
-
-                <!-- Actions -->
-                <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                    <div class="flex items-center space-x-3">
-                        <a href="{{ route('admin.routes.edit', $route) }}"
-                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit Route
-                        </a>
-
-                        @if($route->status === 'planned')
-                            <form method="POST" action="{{ route('admin.routes.start', $route) }}">
-                                @csrf
-                                <button type="submit" class="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100">
-                                    <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Start Route
-                                </button>
-                            </form>
-                        @elseif($route->status === 'in_progress')
-                            <form method="POST" action="{{ route('admin.routes.complete', $route) }}">
-                                @csrf
-                                <button type="submit" class="inline-flex items-center px-4 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100">
-                                    <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Complete Route
-                                </button>
-                            </form>
-                        @endif
-                    </div>
-
-                    <form method="POST" action="{{ route('admin.routes.destroy', $route) }}"
-                          onsubmit="return confirm('Are you sure you want to delete this route?');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
-                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 011-1h2a1 1 0 011 1v3M4 7h16" />
-                            </svg>
-                            Delete Route
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Customers on Route -->
-            @if($customers && $customers->count() > 0)
-            <div class="bg-white shadow rounded-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">Customers on This Route</h3>
-                    <p class="text-sm text-gray-500">{{ $customers->count() }} customers</p>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            @foreach($customers as $index => $customer)
-                            <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    #{{ $index + 1 }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm font-medium text-gray-900">{{ $customer->name }}</div>
-                                    <div class="text-sm text-gray-500">{{ $customer->email }}</div>
-                                </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">
-                                    {{ $customer->address }}<br>
-                                    {{ $customer->city }}, {{ $customer->state }} {{ $customer->zip_code }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {{ $customer->phone ?? 'N/A' }}
-                                </td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+<div class="container mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">{{ $route->name }}</h1>
+            <p class="text-gray-600 mt-1">
+                <span class="capitalize">{{ $route->type }}</span> Route
+                @if($route->assignedUser)
+                    • Assigned to {{ $route->assignedUser->name }}
+                @endif
+            </p>
+        </div>
+        <div class="flex space-x-3">
+            <a href="{{ route('admin.routes.edit', $route) }}" class="btn btn-secondary">
+                Edit Route
+            </a>
+            @if($route->status === 'planned')
+                <form action="{{ route('admin.routes.start', $route) }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="btn btn-primary">Start Route</button>
+                </form>
+            @elseif($route->status === 'in_progress')
+                <form action="{{ route('admin.routes.complete', $route) }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="btn btn-success">Complete Route</button>
+                </form>
             @endif
         </div>
+    </div>
 
-        <!-- Sidebar -->
-        <div class="space-y-6">
-            <!-- Statistics -->
+    <!-- Status Badge -->
+    <div class="mb-6">
+        <span class="px-3 py-1 rounded-full text-sm font-medium
+            @if($route->status === 'planned') bg-blue-100 text-blue-800
+            @elseif($route->status === 'in_progress') bg-yellow-100 text-yellow-800
+            @elseif($route->status === 'completed') bg-green-100 text-green-800
+            @else bg-gray-100 text-gray-800
+            @endif">
+            {{ ucfirst(str_replace('_', ' ', $route->status)) }}
+        </span>
+    </div>
+
+    @if(session('success'))
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    <!-- Holiday Filter -->
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">Filter by Holiday</h2>
+        <form method="GET" action="{{ route('admin.routes.show', $route) }}" class="flex items-end space-x-4">
+            <div class="flex-1">
+                <label for="holiday_id" class="block text-sm font-medium text-gray-700 mb-2">Select Holiday</label>
+                <select name="holiday_id" id="holiday_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">-- Select a Holiday --</option>
+                    @foreach($holidays as $holiday)
+                        <option value="{{ $holiday->id }}" {{ $selectedHolidayId == $holiday->id ? 'selected' : '' }}>
+                            {{ $holiday->name }} - {{ $holiday->date->format('M d, Y') }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                Apply Filter
+            </button>
+        </form>
+    </div>
+
+    @if($selectedHolidayId)
+        <!-- Route Management Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Available Placements -->
             <div class="bg-white shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Route Info</h3>
-                <dl class="space-y-4">
-                    <div>
-                        <dt class="text-sm font-medium text-gray-500">Total Stops</dt>
-                        <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $customers->count() }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-sm font-medium text-gray-500">Route Status</dt>
-                        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ ucfirst(str_replace('_', ' ', $route->status)) }}</dd>
-                    </div>
-                </dl>
+                <h2 class="text-lg font-semibold mb-4">Available Customers</h2>
+                <p class="text-sm text-gray-600 mb-4">Click to add a customer to this route</p>
+                <div id="available-placements" class="space-y-3 max-h-96 overflow-y-auto">
+                    <p class="text-gray-500 text-sm">Loading available customers...</p>
+                </div>
             </div>
 
-            <!-- Quick Actions -->
+            <!-- Route Placements -->
             <div class="bg-white shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-                <div class="space-y-3">
-                    @if($route->holiday)
-                    <a href="{{ route('admin.holidays.show', $route->holiday) }}"
-                       class="block w-full text-center px-4 py-2 border border-indigo-300 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
-                        View Holiday Details
-                    </a>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Route Customers ({{ $customersWithHolidays->count() }})</h2>
+                    @if($customersWithHolidays->count() > 1)
+                        <button onclick="optimizeRoute()" class="btn btn-sm btn-secondary">
+                            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            Optimize Route
+                        </button>
                     @endif
-                    <a href="{{ route('admin.routes.index') }}"
-                       class="block w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        View All Routes
-                    </a>
+                </div>
+                <div id="route-placements" class="space-y-3 max-h-96 overflow-y-auto">
+                    @forelse($customersWithHolidays as $item)
+                        <div class="placement-item p-3 bg-gray-50 rounded border" data-user-id="{{ $item['user']->id }}">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex-1">
+                                    <p class="font-medium">{{ $item['user']->name }}</p>
+                                    <p class="text-sm text-gray-600">{{ $item['user']->full_address }}</p>
+                                </div>
+                                <button onclick="removePlacement({{ $item['user']->id }})" class="text-red-600 hover:text-red-800 ml-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                @foreach($item['holidays'] as $holiday)
+                                    <span class="text-xs px-2 py-1 rounded-full {{ $selectedHolidayId == $holiday['id'] ? 'bg-indigo-100 text-indigo-800 font-medium' : 'bg-gray-100 text-gray-700' }}">
+                                        {{ $holiday['name'] }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @empty
+                        <p class="text-gray-500 text-sm">No customers added to this route yet.</p>
+                    @endforelse
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Google Maps Section -->
+        @if($customersWithHolidays->count() > 0)
+            <div class="bg-white shadow rounded-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Route Map & Directions</h2>
+                    <button onclick="getDirections()" class="btn btn-secondary">
+                        Get Turn-by-Turn Directions
+                    </button>
+                </div>
+
+                <!-- Map Container -->
+                <div id="map" class="w-full h-96 rounded-lg border mb-4"></div>
+
+                <!-- Directions Panel -->
+                <div id="directions-panel" class="hidden">
+                    <h3 class="text-md font-semibold mb-3">Turn-by-Turn Directions</h3>
+                    <div id="directions-content" class="space-y-4"></div>
+                </div>
+            </div>
+        @endif
+    @else -->
+                <div id="directions-panel" class="hidden">
+                    <h3 class="text-md font-semibold mb-3">Turn-by-Turn Directions</h3>
+                    <div id="directions-content" class="space-y-4"></div>
+                </div>
+            </div>
+        @endif
+    @else
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+            <p class="text-blue-800">Please select a holiday to view and manage placements for this route.</p>
+        </div>
+    @endif
+
+    <!-- Route Notes -->
+    @if($route->notes)
+        <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold mb-3">Notes</h2>
+            <p class="text-gray-700">{{ $route->notes }}</p>
+        </div>
+    @endif
 </div>
+
+@push('scripts')
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_api_key') }}&libraries=places"></script>
+<script>
+let map;
+let directionsService;
+let directionsRenderer;
+const routeId = {{ $route->id }};
+const holidayId = {{ $selectedHolidayId ?? 'null' }};
+
+// Initialize map
+function initMap() {
+    if (!document.getElementById('map')) return;
+
+    map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 12,
+        center: { lat: 30.6280, lng: -96.3344 }
+    });
+
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer();
+    directionsRenderer.setMap(map);
+}
+
+// Load available placements
+function loadAvailablePlacements() {
+    if (!holidayId) return;
+
+    fetch(`/admin/routes/${routeId}/available-placements`)
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('available-placements');
+
+            if (data.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No available customers. All customers are already on this route.</p>';
+                return;
+            }
+
+            container.innerHTML = data.map(customer => `
+                <div class="p-3 bg-gray-50 rounded border hover:bg-gray-100 cursor-pointer transition" onclick="addPlacement(${customer.user_id})">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <p class="font-medium">${customer.name}</p>
+                            <p class="text-sm text-gray-600">${customer.address}</p>
+                        </div>
+                        <button class="text-green-600 hover:text-green-800 ml-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        ${customer.holidays.map(holiday => `
+                            <span class="text-xs px-2 py-1 rounded-full ${holiday.id == holidayId ? 'bg-indigo-100 text-indigo-800 font-medium' : 'bg-gray-100 text-gray-700'}" title="${holiday.date}">
+                                ${holiday.name}
+                            </span>
+                        `).join('')}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">${customer.holiday_count} holiday${customer.holiday_count !== 1 ? 's' : ''}</p>
+                </div>
+            `).join('');
+        })
+        .catch(error => {
+            console.error('Error loading placements:', error);
+            document.getElementById('available-placements').innerHTML =
+                '<p class="text-red-500 text-sm">Error loading customers.</p>';
+        });
+}
+
+// Add placement to route
+function addPlacement(userId) {
+    fetch(`/admin/routes/${routeId}/add-placement`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ user_id: userId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+// Remove placement from route
+function removePlacement(userId) {
+    if (!confirm('Remove this placement from the route?')) return;
+
+    fetch(`/admin/routes/${routeId}/remove-placement`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ user_id: userId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+// Optimize route using Google Maps
+function optimizeRoute() {
+    if (!confirm('Optimize this route for minimum travel time?')) return;
+
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin">⟳</span> Optimizing...';
+
+    fetch(`/admin/routes/${routeId}/optimize`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ holiday_id: holidayId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Route optimized successfully!');
+            location.reload();
+        } else {
+            alert('Error optimizing route: ' + (data.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.innerHTML = 'Optimize Route';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error optimizing route');
+        btn.disabled = false;
+        btn.innerHTML = 'Optimize Route';
+    });
+}
+
+// Get turn-by-turn directions
+function getDirections() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin">⟳</span> Loading...';
+
+    fetch(`/admin/routes/${routeId}/directions?holiday_id=${holidayId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayDirections(data.directions);
+                btn.disabled = false;
+                btn.innerHTML = 'Get Turn-by-Turn Directions';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            btn.disabled = false;
+            btn.innerHTML = 'Get Turn-by-Turn Directions';
+        });
+}
+
+// Display directions
+function displayDirections(directions) {
+    const panel = document.getElementById('directions-panel');
+    const content = document.getElementById('directions-content');
+
+    panel.classList.remove('hidden');
+
+    let html = `
+        <div class="bg-blue-50 p-4 rounded-lg mb-4">
+            <p class="font-semibold">Total Distance: ${directions.total_distance}</p>
+            <p class="font-semibold">Estimated Time: ${directions.total_duration}</p>
+        </div>
+    `;
+
+    directions.stops.forEach((stop, index) => {
+        html += `
+            <div class="border-l-4 border-indigo-500 pl-4 mb-4">
+                <h4 class="font-semibold text-lg mb-2">
+                    Stop ${stop.stop_number}: ${stop.customer_name}
+                </h4>
+                <p class="text-sm text-gray-600 mb-2">${stop.address}</p>
+                <p class="text-sm mb-2">
+                    <span class="font-medium">Distance:</span> ${stop.distance} •
+                    <span class="font-medium">Duration:</span> ${stop.duration}
+                </p>
+                <div class="space-y-1">
+                    ${stop.steps.map((step, i) => `
+                        <p class="text-sm pl-4">
+                            <span class="font-medium">${i + 1}.</span> ${step.instruction}
+                            <span class="text-gray-500">(${step.distance})</span>
+                        </p>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+
+    content.innerHTML = html;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (holidayId) {
+        loadAvailablePlacements();
+        if (document.getElementById('map')) {
+            initMap();
+        }
+    }
+});
+</script>
+@endpush
 @endsection

@@ -128,12 +128,17 @@ class Holiday extends Model
      */
     public function isActiveInYear($year)
     {
-        if (!$this->recurring) {
-            return $this->date->year == $year;
-        }
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return false;
+      }
 
-        // Recurring holidays are active every year
-        return true;
+      if (!$this->recurring) {
+          return $this->date->year == $year;
+      }
+
+      // Recurring holidays are active every year
+      return true;
     }
 
     /**
@@ -141,6 +146,12 @@ class Holiday extends Model
      */
     public function getNextDateAfter(Carbon $date)
     {
+
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return null;
+      }
+
         if (!$this->recurring) {
             return $this->date->gt($date) ? $this->date : null;
         }
@@ -161,6 +172,11 @@ class Holiday extends Model
      */
     public function getPlacementDatesForYear($year)
     {
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          throw new \Exception("Holiday {$this->id} ({$this->name}) has no date set");
+      }
+
         $holidayDate = $this->date->copy()->year($year);
 
         return [
@@ -175,6 +191,11 @@ class Holiday extends Model
      */
     public function getFullNameAttribute()
     {
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return $this->name . ' (No date set)';
+      }
+
         return $this->name . ' (' . $this->date->format('M j') . ')';
     }
 
@@ -183,6 +204,11 @@ class Holiday extends Model
      */
     public function isUpcoming()
     {
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return false;
+      }
+
         return $this->date->isFuture();
     }
 
@@ -191,6 +217,11 @@ class Holiday extends Model
      */
     public function isPast()
     {
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return false;
+      }
+
         return $this->date->isPast();
     }
 
@@ -199,6 +230,12 @@ class Holiday extends Model
      */
     public function getDaysUntilAttribute()
     {
+
+      // CRITICAL FIX: Check if date is null
+      if (!$this->date) {
+          return false;
+      }
+
         return Carbon::now()->diffInDays($this->date, false);
     }
 

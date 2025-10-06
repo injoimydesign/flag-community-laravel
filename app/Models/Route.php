@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
 
 class Route extends Model
 {
@@ -16,9 +17,7 @@ class Route extends Model
      */
     protected $fillable = [
         'name',
-        'date',
         'type',
-        'holiday_id',
         'assigned_user_id',
         'customer_order',
         'status',
@@ -29,19 +28,10 @@ class Route extends Model
      * The attributes that should be cast.
      */
     protected $casts = [
-        'date' => 'date',
         'customer_order' => 'array',
     ];
 
     // Relationships
-
-    /**
-     * Get the holiday for this route.
-     */
-    public function holiday()
-    {
-        return $this->belongsTo(Holiday::class);
-    }
 
     /**
      * Get the assigned user (driver/technician).
@@ -49,28 +39,6 @@ class Route extends Model
     public function assignedUser()
     {
         return $this->belongsTo(User::class, 'assigned_user_id');
-    }
-
-    /**
-     * Get flag placements for this route.
-     */
-    public function flagPlacements()
-    {
-        $customerIds = $this->customer_order ?: [];
-
-        if ($this->type === 'placement') {
-            return FlagPlacement::whereHas('subscription', function ($query) use ($customerIds) {
-                $query->whereIn('user_id', $customerIds);
-            })
-            ->where('holiday_id', $this->holiday_id)
-            ->where('placement_date', $this->date);
-        } else {
-            return FlagPlacement::whereHas('subscription', function ($query) use ($customerIds) {
-                $query->whereIn('user_id', $customerIds);
-            })
-            ->where('holiday_id', $this->holiday_id)
-            ->where('removal_date', $this->date);
-        }
     }
 
     /**
@@ -84,10 +52,8 @@ class Route extends Model
             return collect();
         }
 
-        // Get users in the specified order
         $users = User::whereIn('id', $customerIds)->get();
 
-        // Sort by the order specified in customer_order array
         return collect($customerIds)->map(function ($id) use ($users) {
             return $users->firstWhere('id', $id);
         })->filter();
@@ -136,22 +102,6 @@ class Route extends Model
     }
 
     /**
-     * Scope to get today's routes.
-     */
-    public function scopeToday($query)
-    {
-        return $query->where('date', Carbon::today());
-    }
-
-    /**
-     * Scope to get routes for a specific date.
-     */
-    public function scopeForDate($query, $date)
-    {
-        return $query->where('date', $date);
-    }
-
-    /**
      * Scope to get routes assigned to a user.
      */
     public function scopeAssignedTo($query, $userId)
@@ -159,240 +109,199 @@ class Route extends Model
         return $query->where('assigned_user_id', $userId);
     }
 
-    // Static methods
+    // Route Management Methods
 
     /**
-     * Generate routes for flag placements on a specific date.
+     * Add customer to route.
      */
-    public static function generatePlacementRoutes($date, $holidayId)
+    public function addCustomer($customerId)
     {
-        // Get all flag placements for this date and holiday
-        $placements = FlagPlacement::with(['subscription.user'])
-            ->where('placement_date', $date)
-            ->where('holiday_id', $holidayId)
-            ->where('status', 'scheduled')
-            ->get();
+        $order = $this->customer_order ?: [];
 
-        if ($placements->isEmpty()) {
-            return collect();
+        if (!in_array($customerId, $order)) {
+            $order[] = $customerId;
+            $this->customer_order = $order;
+            $this->save();
+        }
+    }
+
+    /**
+     * Remove customer from route.
+     */
+    public function removeCustomer($customerId)
+    {
+        $order = $this->customer_order ?: [];
+        $order = array_filter($order, function ($id) use ($customerId) {
+            return $id != $customerId;
+        });
+
+        $this->customer_order = array_values($order);
+        $this->save();
+    }
+
+    /**
+     * Reorder customers in the route.
+     */
+    public function reorderCustomers(array $customerIds)
+    {
+        $this->customer_order = $customerIds;
+        $this->save();
+    }
+
+    // Google Maps Integration
+
+    /**
+     * Optimize route using Google Maps Directions API with waypoint optimization.
+     */
+    public function optimizeWithGoogleMaps()
+    {
+        $customers = $this->customers();
+
+        if ($customers->count() < 2) {
+            return $this->customer_order;
         }
 
-        // Group customers by geographic proximity
-        $customerGroups = self::groupCustomersByProximity($placements);
+        $apiKey = config('services.google.maps_api_key');
 
-        $routes = collect();
-        $routeNumber = 1;
-
-        foreach ($customerGroups as $group) {
-            // Optimize route order using Google Maps API
-            $optimizedOrder = self::optimizeRouteOrder($group);
-
-            $route = self::create([
-                'name' => "Placement Route #{$routeNumber} - " . Carbon::parse($date)->format('M j'),
-                'date' => $date,
-                'type' => 'placement',
-                'holiday_id' => $holidayId,
-                'customer_order' => $optimizedOrder->pluck('id')->toArray(),
-                'status' => 'planned',
-            ]);
-
-            $routes->push($route);
-            $routeNumber++;
+        if (!$apiKey) {
+            throw new \Exception('Google Maps API key not configured');
         }
 
-        return $routes;
-    }
+        // Get addresses
+        $addresses = $customers->map(function ($customer) {
+            return $customer->full_address;
+        })->toArray();
 
-    /**
-     * Generate routes for flag removals on a specific date.
-     */
-    public static function generateRemovalRoutes($date, $holidayId)
-    {
-        // Get all flag placements for removal on this date and holiday
-        $placements = FlagPlacement::with(['subscription.user'])
-            ->where('removal_date', $date)
-            ->where('holiday_id', $holidayId)
-            ->where('status', 'placed')
-            ->get();
+        // Use first address as origin and last as destination
+        $origin = $addresses[0];
+        $destination = end($addresses);
 
-        if ($placements->isEmpty()) {
-            return collect();
+        // Middle addresses are waypoints
+        $waypoints = array_slice($addresses, 1, -1);
+
+        // Build waypoints string with optimization
+        $waypointsStr = 'optimize:true';
+        if (!empty($waypoints)) {
+            $waypointsStr .= '|' . implode('|', array_map('urlencode', $waypoints));
         }
 
-        // Group customers by geographic proximity
-        $customerGroups = self::groupCustomersByProximity($placements);
+        // Call Google Maps Directions API
+        $response = Http::get('https://maps.googleapis.com/maps/api/directions/json', [
+            'origin' => $origin,
+            'destination' => $destination,
+            'waypoints' => $waypointsStr,
+            'key' => $apiKey,
+        ]);
 
-        $routes = collect();
-        $routeNumber = 1;
-
-        foreach ($customerGroups as $group) {
-            // Optimize route order using Google Maps API
-            $optimizedOrder = self::optimizeRouteOrder($group);
-
-            $route = self::create([
-                'name' => "Removal Route #{$routeNumber} - " . Carbon::parse($date)->format('M j'),
-                'date' => $date,
-                'type' => 'removal',
-                'holiday_id' => $holidayId,
-                'customer_order' => $optimizedOrder->pluck('id')->toArray(),
-                'status' => 'planned',
-            ]);
-
-            $routes->push($route);
-            $routeNumber++;
+        if (!$response->successful() || $response['status'] !== 'OK') {
+            throw new \Exception('Failed to optimize route with Google Maps API');
         }
 
-        return $routes;
-    }
+        // Extract optimized order
+        $waypointOrder = $response['routes'][0]['waypoint_order'] ?? [];
 
-    // Helper methods
+        // Build new customer order
+        $optimizedOrder = [$this->customer_order[0]]; // Start with origin
 
-    /**
-     * Group customers by geographic proximity.
-     */
-    private static function groupCustomersByProximity($placements)
-    {
-        $customers = $placements->map(function ($placement) {
-            return $placement->subscription->user;
-        })->unique('id');
+        // Add waypoints in optimized order
+        foreach ($waypointOrder as $index) {
+            $optimizedOrder[] = $this->customer_order[$index + 1];
+        }
 
-        // Simple grouping by ZIP code for now
-        // In production, you'd want more sophisticated clustering
-        return $customers->groupBy('zip_code')->values();
-    }
+        // Add destination
+        if (count($this->customer_order) > 1) {
+            $optimizedOrder[] = end($this->customer_order);
+        }
 
-    /**
-     * Optimize route order for minimum travel time.
-     */
-    private static function optimizeRouteOrder($customers)
-    {
-        // This is a simplified version. In production, you'd use Google Maps
-        // Directions API to get actual travel times and optimize the route
+        // Save optimized order
+        $this->customer_order = $optimizedOrder;
+        $this->save();
 
-        // For now, just return customers sorted by address
-        return $customers->sortBy('address');
+        return $optimizedOrder;
     }
 
     /**
-     * Check if route is planned.
+     * Get turn-by-turn directions from Google Maps.
      */
-    public function isPlanned()
+    public function getGoogleMapsDirections()
     {
-        return $this->status === 'planned';
-    }
+        $customers = $this->customers();
 
-    /**
-     * Check if route is in progress.
-     */
-    public function isInProgress()
-    {
-        return $this->status === 'in_progress';
-    }
+        if ($customers->isEmpty()) {
+            return null;
+        }
 
-    /**
-     * Check if route is completed.
-     */
-    public function isCompleted()
-    {
-        return $this->status === 'completed';
-    }
+        $apiKey = config('services.google.maps_api_key');
 
-    /**
-     * Get type display name.
-     */
-    public function getTypeDisplayAttribute()
-    {
-        return ucfirst($this->type);
-    }
+        if (!$apiKey) {
+            throw new \Exception('Google Maps API key not configured');
+        }
 
-    /**
-     * Get status display name.
-     */
-    public function getStatusDisplayAttribute()
-    {
-        return str_replace('_', ' ', ucfirst($this->status));
-    }
+        $addresses = $customers->map(function ($customer) {
+            return $customer->full_address;
+        })->toArray();
 
-    /**
-     * Get status color for UI.
-     */
-    public function getStatusColorAttribute()
-    {
+        if (count($addresses) < 2) {
+            return null;
+        }
+
+        $origin = $addresses[0];
+        $destination = end($addresses);
+        $waypoints = array_slice($addresses, 1, -1);
+
+        $params = [
+            'origin' => $origin,
+            'destination' => $destination,
+            'key' => $apiKey,
+            'alternatives' => false,
+        ];
+
+        if (!empty($waypoints)) {
+            $params['waypoints'] = implode('|', array_map('urlencode', $waypoints));
+        }
+
+        $response = Http::get('https://maps.googleapis.com/maps/api/directions/json', $params);
+
+        if (!$response->successful() || $response['status'] !== 'OK') {
+            throw new \Exception('Failed to get directions from Google Maps API');
+        }
+
+        $route = $response['routes'][0];
+        $legs = $route['legs'];
+
+        // Format directions
+        $directions = [];
+        $totalDistance = 0;
+        $totalDuration = 0;
+
+        foreach ($legs as $legIndex => $leg) {
+            $totalDistance += $leg['distance']['value'];
+            $totalDuration += $leg['duration']['value'];
+
+            $customer = $customers[$legIndex];
+
+            $directions[] = [
+                'stop_number' => $legIndex + 1,
+                'customer_name' => $customer->name,
+                'address' => $customer->full_address,
+                'distance' => $leg['distance']['text'],
+                'duration' => $leg['duration']['text'],
+                'steps' => collect($leg['steps'])->map(function ($step) {
+                    return [
+                        'instruction' => strip_tags($step['html_instructions']),
+                        'distance' => $step['distance']['text'],
+                        'duration' => $step['duration']['text'],
+                    ];
+                })->toArray(),
+            ];
+        }
+
         return [
-            'planned' => 'text-blue-600',
-            'in_progress' => 'text-yellow-600',
-            'completed' => 'text-green-600',
-        ][$this->status] ?? 'text-gray-600';
-    }
-
-    /**
-     * Start the route.
-     */
-    public function start($userId = null)
-    {
-        $this->status = 'in_progress';
-
-        if ($userId) {
-            $this->assigned_user_id = $userId;
-        }
-
-        $this->save();
-    }
-
-    /**
-     * Complete the route.
-     */
-    public function complete($notes = null)
-    {
-        $this->status = 'completed';
-
-        if ($notes) {
-            $this->notes = ($this->notes ? $this->notes . ' | ' : '') . $notes;
-        }
-
-        $this->save();
-    }
-
-    /**
-     * Get total number of stops on this route.
-     */
-    public function getTotalStopsAttribute()
-    {
-        return count($this->customer_order ?: []);
-    }
-
-    /**
-     * Get completed stops count.
-     */
-    public function getCompletedStopsAttribute()
-    {
-        if ($this->type === 'placement') {
-            return $this->flagPlacements()->where('status', 'placed')->count();
-        } else {
-            return $this->flagPlacements()->where('status', 'removed')->count();
-        }
-    }
-
-    /**
-     * Get route progress percentage.
-     */
-    public function getProgressPercentageAttribute()
-    {
-        if ($this->total_stops === 0) {
-            return 0;
-        }
-
-        return round(($this->completed_stops / $this->total_stops) * 100);
-    }
-
-    /**
-     * Get estimated duration in minutes.
-     */
-    public function getEstimatedDurationAttribute()
-    {
-        // Rough estimate: 10 minutes per stop + 5 minutes travel between stops
-        $stops = $this->total_stops;
-        return ($stops * 10) + (($stops - 1) * 5);
+            'total_distance' => round($totalDistance / 1609.34, 2) . ' miles',
+            'total_duration' => round($totalDuration / 60) . ' minutes',
+            'stops' => $directions,
+            'overview_polyline' => $route['overview_polyline']['points'],
+        ];
     }
 
     /**
@@ -425,58 +334,65 @@ class Route extends Model
         return $url;
     }
 
+    // Helper Methods
+
     /**
-     * Assign route to a user.
+     * Get total number of stops on this route.
      */
-    public function assignTo($userId)
+    public function getTotalStopsAttribute()
     {
-        $this->assigned_user_id = $userId;
-        $this->save();
+        return count($this->customer_order ?: []);
     }
 
     /**
-     * Unassign route from current user.
+     * Check if route is planned.
      */
-    public function unassign()
+    public function isPlanned()
     {
-        $this->assigned_user_id = null;
-        $this->save();
+        return $this->status === 'planned';
     }
 
     /**
-     * Reorder customers in the route.
+     * Check if route is in progress.
      */
-    public function reorderCustomers(array $customerIds)
+    public function isInProgress()
     {
-        $this->customer_order = $customerIds;
-        $this->save();
+        return $this->status === 'in_progress';
     }
 
     /**
-     * Add customer to route.
+     * Check if route is completed.
      */
-    public function addCustomer($customerId)
+    public function isCompleted()
     {
-        $order = $this->customer_order ?: [];
+        return $this->status === 'completed';
+    }
 
-        if (!in_array($customerId, $order)) {
-            $order[] = $customerId;
-            $this->customer_order = $order;
-            $this->save();
+    /**
+     * Start the route.
+     */
+    public function start($userId = null)
+    {
+        $this->status = 'in_progress';
+
+        if ($userId) {
+            $this->assigned_user_id = $userId;
         }
+
+        $this->save();
     }
 
     /**
-     * Remove customer from route.
+     * Complete the route.
      */
-    public function removeCustomer($customerId)
+    public function complete($notes = null)
     {
-        $order = $this->customer_order ?: [];
-        $order = array_filter($order, function ($id) use ($customerId) {
-            return $id != $customerId;
-        });
+        $this->status = 'completed';
 
-        $this->customer_order = array_values($order);
+        if ($notes) {
+            $this->notes = ($this->notes ? $this->notes . ' | ' : '') . $notes;
+        }
+
         $this->save();
     }
 }

@@ -202,44 +202,59 @@ class HolidayController extends Controller
     /**
      * Generate placements for a holiday.
      */
-    public function generatePlacements(Holiday $holiday)
-    {
-        // Logic to generate placements for all active subscriptions
-        // This would create FlagPlacement records for this holiday
-        
-        $subscriptionsCount = \App\Models\Subscription::where('status', 'active')->count();
-        
-        if ($subscriptionsCount === 0) {
-            return redirect()->back()
-                ->with('error', 'No active subscriptions found to generate placements.');
-        }
+     /**
+  * Generate placements for a holiday.
+  *
+  * This method should be added to your HolidayController.php
+  */
+ public function generatePlacements(Holiday $holiday)
+ {
+     // CRITICAL FIX: Check if holiday has a date before proceeding
+     if (!$holiday->date) {
+         return redirect()->back()
+             ->with('error', 'Cannot generate placements: Holiday has no date set. Please update the holiday first.');
+     }
 
-        // Create placements for each active subscription
-        $created = 0;
-        $subscriptions = \App\Models\Subscription::where('status', 'active')->get();
-        
-        foreach ($subscriptions as $subscription) {
-            // Check if placement already exists
-            $exists = \App\Models\FlagPlacement::where('holiday_id', $holiday->id)
-                ->where('subscription_id', $subscription->id)
-                ->exists();
-            
-            if (!$exists) {
-                \App\Models\FlagPlacement::create([
-                    'subscription_id' => $subscription->id,
-                    'holiday_id' => $holiday->id,
-                    'flag_product_id' => $subscription->flag_product_id,
-                    'scheduled_date' => $holiday->date->copy()->subDays($holiday->placement_days_before),
-                    'removal_date' => $holiday->date->copy()->addDays($holiday->removal_days_after),
-                    'status' => 'scheduled',
-                ]);
-                $created++;
-            }
-        }
+     // Logic to generate placements for all active subscriptions
+     // This would create FlagPlacement records for this holiday
 
-        return redirect()->back()
-            ->with('success', "Generated {$created} placements for {$holiday->name}.");
-    }
+     $subscriptionsCount = \App\Models\Subscription::where('status', 'active')->count();
+
+     if ($subscriptionsCount === 0) {
+         return redirect()->back()
+             ->with('error', 'No active subscriptions found to generate placements.');
+     }
+
+     // Create placements for each active subscription
+     $created = 0;
+     $subscriptions = \App\Models\Subscription::where('status', 'active')->get();
+
+     foreach ($subscriptions as $subscription) {
+         // Check if placement already exists
+         $exists = \App\Models\FlagPlacement::where('holiday_id', $holiday->id)
+             ->where('subscription_id', $subscription->id)
+             ->exists();
+
+         if (!$exists) {
+             try {
+                 \App\Models\FlagPlacement::create([
+                     'subscription_id' => $subscription->id,
+                     'holiday_id' => $holiday->id,
+                     'flag_product_id' => $subscription->flag_product_id,
+                     'placement_date' => $holiday->date->copy()->subDays($holiday->placement_days_before ?? 1),
+                     'removal_date' => $holiday->date->copy()->addDays($holiday->removal_days_after ?? 1),
+                     'status' => 'scheduled',
+                 ]);
+                 $created++;
+             } catch (\Exception $e) {
+                 \Log::error("Failed to create placement for subscription {$subscription->id}: " . $e->getMessage());
+             }
+         }
+     }
+
+     return redirect()->back()
+         ->with('success', "Generated {$created} placements for {$holiday->name}.");
+ }
 
     /**
      * Export holidays to CSV.
@@ -256,7 +271,7 @@ class HolidayController extends Controller
         $holidays = $query->orderBy('date')->get();
 
         $filename = 'holidays_' . Carbon::now()->format('Y-m-d_His') . '.csv';
-        
+
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
@@ -264,7 +279,7 @@ class HolidayController extends Controller
 
         $callback = function() use ($holidays) {
             $file = fopen('php://output', 'w');
-            
+
             // Headers
             fputcsv($file, [
                 'ID',

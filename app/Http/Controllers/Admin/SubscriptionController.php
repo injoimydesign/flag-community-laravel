@@ -8,8 +8,11 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\StripeService;
 use App\Services\NotificationService;
+use App\Models\FlagProduct;
+use App\Models\Holiday;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
@@ -255,195 +258,216 @@ class SubscriptionController extends Controller
     }
 
     /**
-   * Store a newly created subscription in storage with placement address.
-   */
-  public function store(Request $request)
-  {
-      // Validation rules
-      $rules = [
-          'flag_product_id' => 'required|exists:flag_products,id',
-          'status' => 'required|in:pending,active,cancelled',
-          'start_date' => 'required|date',
-          'billing_frequency' => 'required|in:monthly,annual',
-          'placement_instructions' => 'nullable|string|max:1000',
-          'notes' => 'nullable|string|max:1000',
-      ];
-
-      // Add validation based on customer type
-      if ($request->customer_type === 'existing') {
-          $rules['user_id'] = 'required|exists:users,id';
-      } else {
-          $rules['first_name'] = 'required|string|max:255';
-          $rules['last_name'] = 'required|string|max:255';
-          $rules['email'] = 'required|email|unique:users,email';
-          $rules['phone'] = 'nullable|string|max:20';
-          $rules['address'] = 'required|string|max:255';
-          $rules['city'] = 'required|string|max:255';
-          $rules['state'] = 'required|string|max:255';
-          $rules['zip_code'] = 'required|string|max:10';
-      }
-
-      $validatedData = $request->validate($rules);
-
-      // Handle customer creation or selection
-      if ($request->customer_type === 'new') {
-          // Create new customer
-          $user = \App\Models\User::create([
-              'first_name' => $request->first_name,
-              'last_name' => $request->last_name,
-              'name' => $request->first_name . ' ' . $request->last_name, // Add full name
-              'email' => $request->email,
-              'phone' => $request->phone,
-              'address' => $request->address,
-              'city' => $request->city,
-              'state' => $request->state,
-              'zip_code' => $request->zip_code,
-              'role' => 'customer',
-              'password' => \Hash::make(\Str::random(16)), // Random password, user will reset
+       * Store a newly created subscription in storage.
+       */
+      public function store(Request $request)
+      {
+          // Validation rules
+          $validator = Validator::make($request->all(), [
+              'customer_type' => 'required|in:new,existing',
+              'user_id' => 'required_if:customer_type,existing',
+              'name' => 'required_if:customer_type,new|string|max:255',
+              'email' => 'required_if:customer_type,new|email|unique:users,email',
+              'phone' => 'nullable|string|max:20',
+              'address' => 'required|string|max:255',
+              'city' => 'required|string|max:100',
+              'state' => 'required|string|size:2',
+              'zip_code' => 'required|string|max:10',
+              'flag_product_id' => 'required|exists:flag_products,id',
+              'billing_frequency' => 'required|in:monthly,annual',
+              'start_date' => 'required|date',
+              'status' => 'required|in:active,pending,canceled',
+              'placement_instructions' => 'nullable|string',
+              'notes' => 'nullable|string',
+              'use_address_as_placement' => 'boolean',
           ]);
 
-          // Geocode address
-          try {
-              $coordinates = $this->geocodeAddress($request->address, $request->city, $request->state, $request->zip_code);
-              $user->update([
-                  'latitude' => $coordinates['lat'] ?? null,
-                  'longitude' => $coordinates['lng'] ?? null,
-              ]);
-          } catch (\Exception $e) {
-              \Log::error('Geocoding failed: ' . $e->getMessage());
+          if ($validator->fails()) {
+              return redirect()->back()
+                  ->withErrors($validator)
+                  ->withInput();
           }
 
-          $userId = $user->id;
-          $placementAddress = $request->address;
-          $placementCity = $request->city;
-          $placementState = $request->state;
-          $placementZipCode = $request->zip_code;
-          $placementLatitude = $coordinates['lat'] ?? null;
-          $placementLongitude = $coordinates['lng'] ?? null;
-      } else {
-          $userId = $request->user_id;
-          $user = \App\Models\User::findOrFail($userId);
-          $placementAddress = $user->address;
-          $placementCity = $user->city;
-          $placementState = $user->state;
-          $placementZipCode = $user->zip_code;
-          $placementLatitude = $user->latitude;
-          $placementLongitude = $user->longitude;
-      }
+          // Handle new or existing customer
+          if ($request->customer_type === 'new') {
+              // Create new user
+              $user = User::create([
+                  'name' => $request->name,
+                  'email' => $request->email,
+                  'phone' => $request->phone,
+                  'address' => $request->address,
+                  'city' => $request->city,
+                  'state' => $request->state,
+                  'zip_code' => $request->zip_code,
+                  'password' => bcrypt(str()->random(16)), // Generate random password
+                  'role' => 'customer',
+              ]);
 
-      // Get flag product
-      $flagProduct = \App\Models\FlagProduct::findOrFail($request->flag_product_id);
+              // Geocode the address
+              try {
+                  $coordinates = $this->geocodeAddress(
+                      $request->address,
+                      $request->city,
+                      $request->state,
+                      $request->zip_code
+                  );
 
-      // Calculate dates
-      $startDate = \Carbon\Carbon::parse($request->start_date);
-      $endDate = $request->billing_frequency === 'annual'
-          ? $startDate->copy()->addYear()
-          : $startDate->copy()->addMonth();
+                  $user->update([
+                      'latitude' => $coordinates['lat'] ?? null,
+                      'longitude' => $coordinates['lng'] ?? null,
+                  ]);
+              } catch (\Exception $e) {
+                  \Log::error('Geocoding failed: ' . $e->getMessage());
+              }
 
-      $nextBillingDate = $request->billing_frequency === 'annual'
-          ? $startDate->copy()->addYear()
-          : $startDate->copy()->addMonth();
+              $userId = $user->id;
+              $placementAddress = $request->address;
+              $placementCity = $request->city;
+              $placementState = $request->state;
+              $placementZipCode = $request->zip_code;
+              $placementLatitude = $coordinates['lat'] ?? null;
+              $placementLongitude = $coordinates['lng'] ?? null;
+          } else {
+              $userId = $request->user_id;
+              $user = User::findOrFail($userId);
+              $placementAddress = $user->address;
+              $placementCity = $user->city;
+              $placementState = $user->state;
+              $placementZipCode = $user->zip_code;
+              $placementLatitude = $user->latitude;
+              $placementLongitude = $user->longitude;
+          }
 
-      // Calculate total amount
-      $totalAmount = $request->billing_frequency === 'annual'
-          ? $flagProduct->annual_subscription_price
-          : round($flagProduct->annual_subscription_price / 12);
+          // Get flag product
+          $flagProduct = FlagProduct::findOrFail($request->flag_product_id);
 
-      // Create subscription
-      $subscription = \App\Models\Subscription::create([
-          'user_id' => $userId,
-          'flag_product_id' => $request->flag_product_id,
-          'status' => $request->status,
-          'type' => $request->billing_frequency,
-          'billing_frequency' => $request->billing_frequency,
-          'start_date' => $startDate,
-          'end_date' => $endDate,
-          'next_billing_date' => $nextBillingDate,
-          'total_amount' => $totalAmount,
-          'placement_instructions' => $request->placement_instructions,
-          'notes' => $request->notes,
-      ]);
+          // Calculate dates
+          $startDate = \Carbon\Carbon::parse($request->start_date);
+          $endDate = $request->billing_frequency === 'annual'
+              ? $startDate->copy()->addYear()
+              : $startDate->copy()->addMonth();
 
-      // Create subscription item
-      \App\Models\SubscriptionItem::create([
-          'subscription_id' => $subscription->id,
-          'flag_product_id' => $request->flag_product_id,
-          'quantity' => 1,
-          'unit_price' => $totalAmount / 100, // Convert from cents to dollars
-          'total_price' => $totalAmount / 100,
-      ]);
+          $nextBillingDate = $request->billing_frequency === 'annual'
+              ? $startDate->copy()->addYear()
+              : $startDate->copy()->addMonth();
 
-      // Create placement using the address for ALL active holidays
-      if ($request->has('use_address_as_placement') && $request->use_address_as_placement) {
-          // Get ALL active holidays (not just selected ones)
-          $holidays = \App\Models\Holiday::where('active', true)->get();
+          // Calculate total amount
+          $totalAmount = $request->billing_frequency === 'annual'
+              ? $flagProduct->annual_subscription_price
+              : round($flagProduct->annual_subscription_price / 12);
 
-          $currentYear = $startDate->year;
-          $endYear = $endDate->year;
-          $years = ($currentYear === $endYear) ? [$currentYear] : [$currentYear, $endYear];
+          // Create subscription
+          $subscription = Subscription::create([
+              'user_id' => $userId,
+              'flag_product_id' => $request->flag_product_id,
+              'status' => $request->status,
+              'type' => $request->billing_frequency,
+              'billing_frequency' => $request->billing_frequency,
+              'start_date' => $startDate,
+              'end_date' => $endDate,
+              'next_billing_date' => $nextBillingDate,
+              'total_amount' => $totalAmount,
+              'placement_instructions' => $request->placement_instructions,
+              'notes' => $request->notes,
+          ]);
 
-          foreach ($years as $year) {
-              foreach ($holidays as $holiday) {
-                  // Skip if holiday is not active in this year
-                  if (method_exists($holiday, 'isActiveInYear') && !$holiday->isActiveInYear($year)) {
-                      continue;
-                  }
+          // Create subscription item
+          \App\Models\SubscriptionItem::create([
+              'subscription_id' => $subscription->id,
+              'flag_product_id' => $request->flag_product_id,
+              'quantity' => 1,
+              'unit_price' => $totalAmount / 100, // Convert from cents to dollars
+              'total_price' => $totalAmount / 100,
+          ]);
 
-                  // Get placement dates for this holiday
-                  if (method_exists($holiday, 'getPlacementDatesForYear')) {
-                      $placementDates = $holiday->getPlacementDatesForYear($year);
-                  } else {
-                      // Fallback if method doesn't exist
-                      $holidayDate = \Carbon\Carbon::parse($holiday->date)->year($year);
-                      $placementDates = [
-                          'placement_date' => $holidayDate->copy()->subDays($holiday->placement_days_before ?? 1),
-                          'removal_date' => $holidayDate->copy()->addDays($holiday->removal_days_after ?? 1),
-                      ];
-                  }
+          // Create placement using the address for ALL active holidays
+          if ($request->has('use_address_as_placement') && $request->use_address_as_placement) {
+              // Get ALL active holidays (not just selected ones)
+              $holidays = Holiday::where('active', true)->get();
 
-                  // Only create placements for dates within subscription period
-                  if ($placementDates['placement_date'] >= $startDate &&
-                      $placementDates['placement_date'] <= $endDate) {
+              $currentYear = $startDate->year;
+              $endYear = $endDate->year;
+              $years = ($currentYear === $endYear) ? [$currentYear] : [$currentYear, $endYear];
 
-                      \App\Models\FlagPlacement::create([
-                          'subscription_id' => $subscription->id,
-                          'holiday_id' => $holiday->id,
-                          'flag_product_id' => $request->flag_product_id,
-                          'placement_date' => $placementDates['placement_date'],
-                          'removal_date' => $placementDates['removal_date'],
-                          'status' => 'scheduled',
-                          // Add placement address details - same address for ALL holidays
-                          'placement_address' => $placementAddress,
-                          'placement_city' => $placementCity,
-                          'placement_state' => $placementState,
-                          'placement_zip_code' => $placementZipCode,
-                          'placement_latitude' => $placementLatitude,
-                          'placement_longitude' => $placementLongitude,
-                      ]);
+              foreach ($years as $year) {
+                  foreach ($holidays as $holiday) {
+                      // CRITICAL FIX: Check if holiday date is null before proceeding
+                      if (!$holiday->date) {
+                          \Log::warning("Holiday {$holiday->id} ({$holiday->name}) has null date, skipping placement creation");
+                          continue;
+                      }
+
+                      // Skip if holiday is not active in this year
+                      if (method_exists($holiday, 'isActiveInYear') && !$holiday->isActiveInYear($year)) {
+                          continue;
+                      }
+
+                      // Get placement dates for this holiday
+                      if (method_exists($holiday, 'getPlacementDatesForYear')) {
+                          try {
+                              $placementDates = $holiday->getPlacementDatesForYear($year);
+                          } catch (\Exception $e) {
+                              \Log::error("Error getting placement dates for holiday {$holiday->id}: " . $e->getMessage());
+                              continue;
+                          }
+                      } else {
+                          // Fallback if method doesn't exist
+                          try {
+                              $holidayDate = \Carbon\Carbon::parse($holiday->date)->year($year);
+                              $placementDates = [
+                                  'placement_date' => $holidayDate->copy()->subDays($holiday->placement_days_before ?? 1),
+                                  'removal_date' => $holidayDate->copy()->addDays($holiday->removal_days_after ?? 1),
+                              ];
+                          } catch (\Exception $e) {
+                              \Log::error("Error parsing holiday date for holiday {$holiday->id}: " . $e->getMessage());
+                              continue;
+                          }
+                      }
+
+                      // Only create placements for dates within subscription period
+                      if (isset($placementDates['placement_date']) &&
+                          $placementDates['placement_date'] >= $startDate &&
+                          $placementDates['placement_date'] <= $endDate) {
+
+                          \App\Models\FlagPlacement::create([
+                              'subscription_id' => $subscription->id,
+                              'holiday_id' => $holiday->id,
+                              'flag_product_id' => $request->flag_product_id,
+                              'placement_date' => $placementDates['placement_date'],
+                              'removal_date' => $placementDates['removal_date'],
+                              'status' => 'scheduled',
+                              // Add placement address details - same address for ALL holidays
+                              'placement_address' => $placementAddress,
+                              'placement_city' => $placementCity,
+                              'placement_state' => $placementState,
+                              'placement_zip_code' => $placementZipCode,
+                              'placement_latitude' => $placementLatitude,
+                              'placement_longitude' => $placementLongitude,
+                          ]);
+                      }
                   }
               }
           }
-      }
 
-      // Send welcome email if new customer
-      if ($request->customer_type === 'new') {
-          try {
-              // Generate password reset token
-              $token = app('auth.password.broker')->createToken($user);
+          // Send welcome email if new customer
+          if ($request->customer_type === 'new') {
+              try {
+                  // Generate password reset token
+                  $token = app('auth.password.broker')->createToken($user);
 
-              // Send welcome email with password setup link
-              // \Mail::to($user->email)->send(new \App\Mail\CustomerWelcome($user, $token));
+                  // Send welcome email with password setup link
+                  // \Mail::to($user->email)->send(new \App\Mail\CustomerWelcome($user, $token));
 
-              \Log::info('Welcome email queued for new customer: ' . $user->email);
-          } catch (\Exception $e) {
-              \Log::error('Failed to send welcome email: ' . $e->getMessage());
+                  \Log::info('Welcome email queued for new customer: ' . $user->email);
+              } catch (\Exception $e) {
+                  \Log::error('Failed to send welcome email: ' . $e->getMessage());
+              }
           }
-      }
 
-      return redirect()->route('admin.subscriptions.show', $subscription)
-          ->with('success', 'Subscription created successfully. ' .
-                 ($request->customer_type === 'new' ? 'Welcome email sent to customer.' : ''));
-  }
+          return redirect()->route('admin.subscriptions.show', $subscription)
+              ->with('success', 'Subscription created successfully. ' .
+                     ($request->customer_type === 'new' ? 'Welcome email sent to customer.' : ''));
+      }
 
     /**
      * Geocode address helper method
