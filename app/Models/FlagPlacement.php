@@ -25,6 +25,13 @@ class FlagPlacement extends Model
         'skip_reason',
         'placed_by',
         'removed_by',
+        // Add placement address fields
+        'placement_address',
+        'placement_city',
+        'placement_state',
+        'placement_zip_code',
+        'placement_latitude',
+        'placement_longitude',
     ];
 
     protected $casts = [
@@ -33,7 +40,10 @@ class FlagPlacement extends Model
         'placed_at' => 'datetime',
         'removed_at' => 'datetime',
         'skipped_at' => 'datetime',
+        'placement_latitude' => 'decimal:8',
+        'placement_longitude' => 'decimal:8',
     ];
+
 
     /**
      * Get the subscription that owns the placement.
@@ -133,7 +143,7 @@ class FlagPlacement extends Model
      */
     public function isOverdue(): bool
     {
-        return $this->status === 'scheduled' && 
+        return $this->status === 'scheduled' &&
                $this->placement_date->isPast();
     }
 
@@ -142,7 +152,7 @@ class FlagPlacement extends Model
      */
     public function isDueToday(): bool
     {
-        return $this->status === 'scheduled' && 
+        return $this->status === 'scheduled' &&
                $this->placement_date->isToday();
     }
 
@@ -151,7 +161,7 @@ class FlagPlacement extends Model
      */
     public function isUpcoming(int $days = 7): bool
     {
-        return $this->status === 'scheduled' && 
+        return $this->status === 'scheduled' &&
                $this->placement_date->isFuture() &&
                $this->placement_date->diffInDays(Carbon::now()) <= $days;
     }
@@ -176,13 +186,13 @@ class FlagPlacement extends Model
     public function getFormattedStatusAttribute(): string
     {
         $status = ucfirst($this->status);
-        
+
         if ($this->status === 'scheduled' && $this->isOverdue()) {
             $status .= ' (Overdue)';
         } elseif ($this->status === 'scheduled' && $this->isDueToday()) {
             $status .= ' (Due Today)';
         }
-        
+
         return $status;
     }
 
@@ -202,7 +212,7 @@ class FlagPlacement extends Model
         if (!$this->placed_at) {
             return 0;
         }
-        
+
         return $this->placed_at->diffInDays(Carbon::now());
     }
 
@@ -273,16 +283,36 @@ class FlagPlacement extends Model
         }
 
         $oldDate = $this->placement_date;
-        
+
         $this->update([
             'placement_date' => $newDate,
-            'notes' => ($this->notes ? $this->notes . "\n" : '') . 
+            'notes' => ($this->notes ? $this->notes . "\n" : '') .
                       "Rescheduled from {$oldDate->format('Y-m-d')} to {$newDate->format('Y-m-d')}" .
                       ($reason ? ": {$reason}" : ''),
         ]);
 
         return true;
     }
+
+    /**
+     * Get the full placement address.
+     */
+    public function getFullPlacementAddressAttribute()
+    {
+        if (!$this->placement_address) {
+            // Fallback to subscription user address
+            return $this->subscription->user->address ?? 'N/A';
+        }
+
+        return trim(sprintf(
+            '%s, %s, %s %s',
+            $this->placement_address,
+            $this->placement_city,
+            $this->placement_state,
+            $this->placement_zip_code
+        ));
+    }
+
 
     /**
      * Get completion percentage for a set of placements.

@@ -198,87 +198,84 @@
 
     <!-- Recent Activity and Quick Actions -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Recent Subscriptions -->
-        <div class="bg-white shadow rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Recent Subscriptions</h3>
-                @if($recentSubscriptions->count() > 0)
-                    <div class="space-y-3">
-                        @foreach($recentSubscriptions as $subscription)
-                            <div class="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-900">
-                                        @if($subscription->user)
-                                            {{ $subscription->user->full_name }}
-                                        @else
-                                            Unknown Customer
-                                        @endif
-                                    </p>
-                                    <p class="text-sm text-gray-500">
-                                        {{ ucfirst($subscription->type) }} - ${{ number_format($subscription->total_amount / 100, 2) }}
-                                    </p>
-                                </div>
-                                <div class="text-sm text-gray-500">
-                                    {{ $subscription->created_at->diffForHumans() }}
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                    <div class="mt-4">
-                        <a href="{{ route('admin.subscriptions.index') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                            View all subscriptions →
-                        </a>
-                    </div>
-                @else
-                    <p class="text-sm text-gray-500">No recent subscriptions.</p>
-                @endif
-            </div>
-        </div>
+      <!-- Quick Actions Section for Admin Dashboard -->
 
-        <!-- Recent Placements -->
-        <div class="bg-white shadow rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Recent Placements</h3>
-                @if($recentPlacements->count() > 0)
-                    <div class="space-y-3">
-                        @foreach($recentPlacements as $placement)
-                            <div class="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-900">
-                                        @if($placement->subscription && $placement->subscription->user)
-                                            {{ $placement->subscription->user->full_name }}
-                                        @else
-                                            Unknown Customer
-                                        @endif
-                                    </p>
-                                    <p class="text-sm text-gray-500">
-                                        @if($placement->holiday)
-                                            {{ $placement->holiday->name }}
-                                        @else
-                                            Unknown Holiday
-                                        @endif
-                                    </p>
-                                </div>
-                                <div class="text-sm text-gray-500">
-                                    @if($placement->placed_at)
-                                        {{ $placement->placed_at->diffForHumans() }}
-                                    @else
-                                        {{ $placement->created_at->diffForHumans() }}
-                                    @endif
-                                </div>
-                            </div>
-                        @endforeach
+<div class="bg-white shadow rounded-lg p-6">
+    <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Create Subscription -->
+        <a href="{{ route('admin.subscriptions.create') }}"
+           class="block p-4 border-2 border-indigo-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all">
+            <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                        <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
                     </div>
-                    <div class="mt-4">
-                        <a href="{{ route('admin.placements.index') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                            View all placements →
-                        </a>
-                    </div>
-                @else
-                    <p class="text-sm text-gray-500">No recent placements.</p>
-                @endif
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">New Subscription</p>
+                    <p class="text-xs text-gray-500">Create subscription</p>
+                </div>
             </div>
-        </div>
+        </a>
+
+        <!-- Add Customer -->
+        <a href="{{ route('admin.customers.create') }}"
+           class="block p-4 border-2 border-green-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all">
+            <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">New Customer</p>
+                    <p class="text-xs text-gray-500">Add customer</p>
+                </div>
+            </div>
+        </a>
+
+        <!-- Create Placement -->
+        <a href="{{ route('admin.placements.create') }}"
+           class="block p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all">
+            <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Create Placement</p>
+                    <p class="text-xs text-gray-500">Schedule flag</p>
+                </div>
+            </div>
+        </a>
+
+        <!-- View Reports -->
+        <a href="{{ route('admin.reports.index') }}"
+           class="block p-4 border-2 border-purple-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all">
+            <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                        <svg class="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">View Reports</p>
+                    <p class="text-xs text-gray-500">Analytics</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
     </div>
 
     <!-- Upcoming Tasks -->
@@ -286,7 +283,7 @@
     <div class="bg-white shadow rounded-lg">
         <div class="px-4 py-5 sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Upcoming Tasks</h3>
-            
+
             @if($overduePlacements->count() > 0)
                 <div class="mb-6">
                     <h4 class="text-md font-medium text-red-600 mb-2">Overdue Placements</h4>
@@ -300,7 +297,7 @@
                                         @else
                                             Unknown Customer
                                         @endif
-                                        - 
+                                        -
                                         @if($placement->holiday)
                                             {{ $placement->holiday->name }}
                                         @else
@@ -333,7 +330,7 @@
                                         @else
                                             Unknown Customer
                                         @endif
-                                        - 
+                                        -
                                         @if($placement->holiday)
                                             {{ $placement->holiday->name }}
                                         @else

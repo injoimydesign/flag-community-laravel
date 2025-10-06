@@ -16,9 +16,11 @@ class Subscription extends Model
      */
      protected $fillable = [
          'user_id',
+         'flag_product_id',
          'stripe_subscription_id',
          'stripe_payment_intent_id',  // ADD THIS
          'type',
+         'billing_frequency',
          'status',
          'total_amount',
          'start_date',
@@ -27,6 +29,7 @@ class Subscription extends Model
          'canceled_at',
          'selected_holidays',
          'special_instructions',
+         'placement_instructions',
          'notes',  // ADD THIS
      ];
 
@@ -51,6 +54,15 @@ class Subscription extends Model
     {
         return $this->belongsTo(User::class);
     }
+    
+    /**
+     * Get the flag product for this subscription.
+     * This is a direct relationship if flag_product_id exists on subscriptions table.
+     */
+    public function flagProduct()
+    {
+        return $this->belongsTo(FlagProduct::class);
+    }
 
     /**
      * Get the subscription items.
@@ -67,7 +79,15 @@ class Subscription extends Model
     {
         return $this->hasMany(FlagPlacement::class);
     }
-
+    
+    /**
+     * Get placements for this subscription.
+     */
+    public function placements()
+    {
+        return $this->hasMany(FlagPlacement::class);
+    }
+    
     /**
      * Get the holidays included in this subscription.
      */
@@ -150,6 +170,14 @@ class Subscription extends Model
             return 0;
         }
 
+        return Carbon::now()->diffInDays($this->end_date, false);
+    }
+    
+    /**
+     * Get days until subscription ends.
+     */
+    public function daysUntilEnd()
+    {
         return Carbon::now()->diffInDays($this->end_date, false);
     }
 
@@ -240,7 +268,7 @@ class Subscription extends Model
                 }
 
                 // Create placement for each subscription item (flag product)
-                foreach ($this->items as $item) {
+                /*foreach ($this->items as $item) {
                     // Check if placement already exists
                     $existingPlacement = FlagPlacement::where([
                         'subscription_id' => $this->id,
@@ -259,7 +287,33 @@ class Subscription extends Model
                             'status' => 'scheduled',
                         ]);
                     }
+                }*/
+                /*---------- */
+                
+                // Create placement for the subscription's flag product
+                $flagProductId = $this->flag_product_id ?? $this->items->first()->flag_product_id ?? null;
+                
+                if ($flagProductId) {
+                    // Check if placement already exists
+                    $existingPlacement = FlagPlacement::where([
+                        'subscription_id' => $this->id,
+                        'holiday_id' => $holiday->id,
+                        'flag_product_id' => $flagProductId,
+                        'placement_date' => $placementDates['placement_date'],
+                    ])->first();
+
+                    if (!$existingPlacement) {
+                        FlagPlacement::create([
+                            'subscription_id' => $this->id,
+                            'holiday_id' => $holiday->id,
+                            'flag_product_id' => $flagProductId,
+                            'placement_date' => $placementDates['placement_date'],
+                            'removal_date' => $placementDates['removal_date'],
+                            'status' => 'scheduled',
+                        ]);
+                    }
                 }
+                
             }
         }
     }
@@ -315,13 +369,16 @@ class Subscription extends Model
         // Create new subscription for renewal
         $renewalSubscription = self::create([
             'user_id' => $this->user_id,
+            'flag_product_id' => $this->flag_product_id,
             'type' => 'annual',
+            'billing_frequency' => 'annual',
             'status' => 'pending', // Will be activated after payment
             'total_amount' => $this->total_amount,
             'start_date' => $this->end_date->copy()->addDay(),
             'end_date' => $newEndDate,
             'selected_holidays' => $this->selected_holidays,
             'special_instructions' => $this->special_instructions,
+            'placement_instructions' => $this->placement_instructions,
         ]);
 
         // Copy subscription items

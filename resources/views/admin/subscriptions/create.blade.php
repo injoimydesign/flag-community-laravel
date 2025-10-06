@@ -1,22 +1,11 @@
 @extends('layouts.admin')
 
-@section('title', 'Create New Order - Admin Dashboard')
+@section('title', 'Create Subscription - Admin Dashboard')
 
-@section('header')
-    <div class="md:flex md:items-center md:justify-between">
-        <div class="flex-1 min-w-0">
-            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-                Create New Order
-            </h2>
-            <p class="mt-1 text-sm text-gray-500">
-                Create a new subscription or one-time order for a customer
-            </p>
-        </div>
-    </div>
-@endsection
+@section('page-title', 'Create New Subscription')
 
 @section('content')
-<div class="space-y-6" x-data="orderForm()">
+<div class="space-y-6">
     <!-- Back Button -->
     <div>
         <a href="{{ route('admin.subscriptions.index') }}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700">
@@ -27,91 +16,70 @@
         </a>
     </div>
 
-    <form method="POST" action="{{ route('admin.subscriptions.store') }}">
-        @csrf
+    <!-- Create Form -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Create New Subscription</h3>
+            <p class="mt-1 text-sm text-gray-500">Add a new subscription for an existing or new customer</p>
+        </div>
 
-        <!-- Customer Selection -->
-        <div class="bg-white shadow rounded-lg overflow-hidden mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 class="text-lg font-medium text-gray-900">1. Customer Information</h3>
-            </div>
+        <form method="POST" action="{{ route('admin.subscriptions.store') }}" x-data="subscriptionForm()">
+            @csrf
 
             <div class="px-6 py-4 space-y-6">
-                <!-- Customer Type Selection -->
+                <!-- Customer Selection -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Customer Type</label>
-                    <div class="flex items-center space-x-4">
-                        <label class="inline-flex items-center">
-                            <input type="radio" name="customer_type" value="existing" x-model="customerType" class="form-radio">
-                            <span class="ml-2">Existing Customer</span>
+                    <h4 class="text-md font-medium text-gray-900 mb-4">Customer Information</h4>
+
+                    <div class="mb-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="customer_type" value="existing" x-model="customerType" class="mr-2">
+                            <span class="text-sm font-medium text-gray-700">Select Existing Customer</span>
                         </label>
-                        <label class="inline-flex items-center">
-                            <input type="radio" name="customer_type" value="new" x-model="customerType" class="form-radio">
-                            <span class="ml-2">New Customer</span>
+                        <label class="flex items-center mt-2">
+                            <input type="radio" name="customer_type" value="new" x-model="customerType" class="mr-2">
+                            <span class="text-sm font-medium text-gray-700">Create New Customer</span>
                         </label>
                     </div>
-                    @error('customer_type')
-                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                    @enderror
-                </div>
 
-                <!-- Existing Customer Selection -->
-                <div x-show="customerType === 'existing'" x-cloak>
-                    <label for="customer_id" class="block text-sm font-medium text-gray-700">
-                        Select Customer <span class="text-red-500">*</span>
-                    </label>
-                    <select :name="customerType === 'existing' ? 'customer_id' : ''"
-                            id="customer_id"
-                            class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('customer_id') border-red-300 @enderror"
-                            x-model="selectedCustomerId"
-                            @change="loadCustomerInfo()"
-                            :required="customerType === 'existing'">
-                        <option value="">-- Select a Customer --</option>
-                        @foreach($customers as $customer)
-                            <option value="{{ $customer->id }}"
-                                    data-email="{{ $customer->email }}"
-                                    data-phone="{{ $customer->phone }}"
-                                    data-address="{{ $customer->address }}"
-                                    data-city="{{ $customer->city }}"
-                                    data-state="{{ $customer->state }}"
-                                    data-zip="{{ $customer->zip_code }}">
-                                {{ $customer->full_name }} - {{ $customer->email }}
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('customer_id')
-                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                    @enderror
+                    <!-- Existing Customer Selection -->
+                    <div x-show="customerType === 'existing'" class="space-y-4">
+                        <div>
+                            <label for="user_id" class="block text-sm font-medium text-gray-700">
+                                Select Customer <span class="text-red-500">*</span>
+                            </label>
+                            <select name="user_id" id="user_id"
+                                    x-model="userId"
+                                    @change="fetchCustomerAddress()"
+                                    :required="customerType === 'existing'"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('user_id') border-red-300 @enderror">
+                                <option value="">-- Select a Customer --</option>
+                                @foreach($customers as $customer)
+                                    <option value="{{ $customer->id }}" data-address="{{ $customer->address }}" data-city="{{ $customer->city }}" data-state="{{ $customer->state }}" data-zip="{{ $customer->zip_code }}">
+                                        {{ $customer->name }} ({{ $customer->email }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('user_id')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
 
-                    <!-- Customer Info Display -->
-                    <div x-show="selectedCustomerId" x-cloak class="mt-4 p-4 bg-blue-50 rounded-md">
-                        <h4 class="font-medium text-sm text-gray-900 mb-2">Selected Customer Details:</h4>
-                        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                            <div>
-                                <dt class="font-medium text-gray-700">Email:</dt>
-                                <dd class="text-gray-900" x-text="customerInfo.email"></dd>
-                            </div>
-                            <div>
-                                <dt class="font-medium text-gray-700">Phone:</dt>
-                                <dd class="text-gray-900" x-text="customerInfo.phone || 'N/A'"></dd>
-                            </div>
-                            <div class="col-span-2">
-                                <dt class="font-medium text-gray-700">Address:</dt>
-                                <dd class="text-gray-900" x-text="`${customerInfo.address}, ${customerInfo.city}, ${customerInfo.state} ${customerInfo.zip}`"></dd>
-                            </div>
-                        </dl>
+                        <div x-show="userId" class="bg-gray-50 p-4 rounded-md">
+                            <h5 class="text-sm font-medium text-gray-700 mb-2">Selected Customer Address</h5>
+                            <p class="text-sm text-gray-600" x-text="customerAddress"></p>
+                        </div>
                     </div>
-                </div>
 
-                <!-- New Customer Form -->
-                <div x-show="customerType === 'new'" x-cloak>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- New Customer Form -->
+                    <div x-show="customerType === 'new'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label for="first_name" class="block text-sm font-medium text-gray-700">
                                 First Name <span class="text-red-500">*</span>
                             </label>
                             <input type="text" name="first_name" id="first_name" value="{{ old('first_name') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('first_name') border-red-300 @enderror">
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('first_name') border-red-300 @enderror">
                             @error('first_name')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -122,7 +90,8 @@
                                 Last Name <span class="text-red-500">*</span>
                             </label>
                             <input type="text" name="last_name" id="last_name" value="{{ old('last_name') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('last_name') border-red-300 @enderror">
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('last_name') border-red-300 @enderror">
                             @error('last_name')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -133,7 +102,8 @@
                                 Email <span class="text-red-500">*</span>
                             </label>
                             <input type="email" name="email" id="email" value="{{ old('email') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('email') border-red-300 @enderror">
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('email') border-red-300 @enderror">
                             @error('email')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -144,15 +114,20 @@
                                 Phone
                             </label>
                             <input type="text" name="phone" id="phone" value="{{ old('phone') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('phone') border-red-300 @enderror">
+                            @error('phone')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
                         </div>
 
                         <div class="md:col-span-2">
                             <label for="address" class="block text-sm font-medium text-gray-700">
-                                Street Address <span class="text-red-500">*</span>
+                                Address <span class="text-red-500">*</span>
                             </label>
                             <input type="text" name="address" id="address" value="{{ old('address') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('address') border-red-300 @enderror">
+                                   x-model="newCustomerAddress"
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('address') border-red-300 @enderror">
                             @error('address')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -163,7 +138,8 @@
                                 City <span class="text-red-500">*</span>
                             </label>
                             <input type="text" name="city" id="city" value="{{ old('city') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('city') border-red-300 @enderror">
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('city') border-red-300 @enderror">
                             @error('city')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -173,8 +149,9 @@
                             <label for="state" class="block text-sm font-medium text-gray-700">
                                 State <span class="text-red-500">*</span>
                             </label>
-                            <input type="text" name="state" id="state" value="{{ old('state') }}" maxlength="2" placeholder="TX"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('state') border-red-300 @enderror">
+                            <input type="text" name="state" id="state" value="{{ old('state') }}"
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('state') border-red-300 @enderror">
                             @error('state')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -185,207 +162,108 @@
                                 ZIP Code <span class="text-red-500">*</span>
                             </label>
                             <input type="text" name="zip_code" id="zip_code" value="{{ old('zip_code') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('zip_code') border-red-300 @enderror">
+                                   :required="customerType === 'new'"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('zip_code') border-red-300 @enderror">
                             @error('zip_code')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
                     </div>
-
-                    <!-- Account Creation Option -->
-                    <div class="mt-6 pt-6 border-t border-gray-200">
-                        <div class="flex items-center">
-                            <input type="checkbox" name="create_account" id="create_account" value="1"
-                                   x-model="createAccount"
-                                   class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                            <label for="create_account" class="ml-2 block text-sm text-gray-700">
-                                Create customer account (send verification email)
-                            </label>
-                        </div>
-
-                        <div x-show="createAccount" x-cloak class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label for="password" class="block text-sm font-medium text-gray-700">
-                                    Password <span class="text-red-500">*</span>
-                                </label>
-                                <input type="password" name="password" id="password"
-                                       class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-
-                            <div>
-                                <label for="password_confirmation" class="block text-sm font-medium text-gray-700">
-                                    Confirm Password <span class="text-red-500">*</span>
-                                </label>
-                                <input type="password" name="password_confirmation" id="password_confirmation"
-                                       class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Subscription Details -->
-        <div class="bg-white shadow rounded-lg overflow-hidden mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 class="text-lg font-medium text-gray-900">2. Subscription Details</h3>
-            </div>
-
-            <div class="px-6 py-4 space-y-6">
-                <!-- Subscription Type -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="type" class="block text-sm font-medium text-gray-700">
-                            Subscription Type <span class="text-red-500">*</span>
-                        </label>
-                        <select name="type" id="type" x-model="subscriptionType" @change="calculateTotal()"
-                                class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('type') border-red-300 @enderror">
-                            <option value="">-- Select Type --</option>
-                            <option value="annual">Annual Subscription</option>
-                            <option value="one-time">One-Time Service</option>
-                        </select>
-                        @error('type')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label for="start_date" class="block text-sm font-medium text-gray-700">
-                            Start Date <span class="text-red-500">*</span>
-                        </label>
-                        <input type="date" name="start_date" id="start_date" value="{{ old('start_date', date('Y-m-d')) }}"
-                               class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('start_date') border-red-300 @enderror">
-                        @error('start_date')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
                 </div>
 
-                <!-- Flag Products Selection -->
+                <!-- Subscription Details -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Flag Products <span class="text-red-500">*</span>
-                    </label>
-                    <div class="border border-gray-300 rounded-md p-4 max-h-64 overflow-y-auto">
-                        @foreach($flagProducts as $product)
-                        <label class="flex items-start py-2 hover:bg-gray-50 px-2 rounded cursor-pointer">
-                            <input type="checkbox"
-                                   name="flag_products[]"
-                                   value="{{ $product->id }}"
-                                   x-model="selectedProducts"
-                                   @change="calculateTotal()"
-                                   data-annual-price="{{ $product->annual_subscription_price }}"
-                                   data-onetime-price="{{ $product->one_time_price }}"
-                                   class="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                            <div class="ml-3 flex-1">
-                                <div class="text-sm font-medium text-gray-900">
-                                    {{ $product->flagType->name }} - {{ $product->flagSize->name }}
-                                </div>
-                                <div class="text-sm text-gray-500">
-                                    {{ $product->flagSize->dimensions }} |
-                                    Annual: ${{ number_format($product->annual_subscription_price / 100, 2) }} |
-                                    One-Time: ${{ number_format($product->one_time_price / 100, 2) }}
-                                </div>
-                                <div class="text-xs text-gray-500">
-                                    Inventory: {{ $product->current_inventory }}
-                                </div>
+                    <h4 class="text-md font-medium text-gray-900 mb-4">Subscription Details</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="flag_product_id" class="block text-sm font-medium text-gray-700">
+                                Flag Product <span class="text-red-500">*</span>
+                            </label>
+                            <select name="flag_product_id" id="flag_product_id" required
+                                    x-model="flagProductId"
+                                    @change="updatePrice()"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('flag_product_id') border-red-300 @enderror">
+                                <option value="">-- Select a Flag Product --</option>
+                                @foreach($flagProducts as $product)
+                                    <option value="{{ $product->id }}"
+                                            data-price="{{ $product->annual_subscription_price }}"
+                                            data-name="{{ $product->display_name }}"
+                                            {{ old('flag_product_id') == $product->id ? 'selected' : '' }}>
+                                        {{ $product->display_name }} - ${{ number_format($product->annual_subscription_price / 100, 2) }}/year
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('flag_product_id')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="status" class="block text-sm font-medium text-gray-700">
+                                Status <span class="text-red-500">*</span>
+                            </label>
+                            <select name="status" id="status" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('status') border-red-300 @enderror">
+                                <option value="pending">Pending</option>
+                                <option value="active" selected>Active</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                            @error('status')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="start_date" class="block text-sm font-medium text-gray-700">
+                                Start Date <span class="text-red-500">*</span>
+                            </label>
+                            <input type="date" name="start_date" id="start_date"
+                                   value="{{ old('start_date', date('Y-m-d')) }}"
+                                   required
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('start_date') border-red-300 @enderror">
+                            @error('start_date')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="billing_frequency" class="block text-sm font-medium text-gray-700">
+                                Billing Frequency <span class="text-red-500">*</span>
+                            </label>
+                            <select name="billing_frequency" id="billing_frequency" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('billing_frequency') border-red-300 @enderror">
+                                <option value="annual" selected>Annual</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                            @error('billing_frequency')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div class="md:col-span-2" x-show="flagProductId">
+                            <div class="bg-blue-50 border border-blue-200 rounded-md p-4">
+                                <h5 class="text-sm font-medium text-blue-900 mb-2">Subscription Summary</h5>
+                                <p class="text-sm text-blue-800">
+                                    <strong>Product:</strong> <span x-text="selectedProductName"></span><br>
+                                    <strong>Total Amount:</strong> $<span x-text="(selectedPrice / 100).toFixed(2)"></span>
+                                </p>
                             </div>
-                        </label>
-                        @endforeach
+                        </div>
                     </div>
-                    @error('flag_products')
+                </div>
+
+                <!-- Placement Instructions -->
+                <div>
+                    <label for="placement_instructions" class="block text-sm font-medium text-gray-700">
+                        Placement Instructions
+                    </label>
+                    <textarea id="placement_instructions" name="placement_instructions" rows="4"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('placement_instructions') border-red-300 @enderror"
+                              placeholder="Enter any special instructions for flag placement...">{{ old('placement_instructions') }}</textarea>
+                    @error('placement_instructions')
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
-                </div>
-
-                <!-- Total Calculation -->
-                <div class="bg-gray-50 p-4 rounded-md">
-                    <div class="flex items-center justify-between text-lg font-semibold">
-                        <span>Total:</span>
-                        <span x-text="'$' + (totalAmount / 100).toFixed(2)"></span>
-                    </div>
-                </div>
-
-                <!-- Holidays Selection -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Select Holidays (leave empty for all holidays)
-                    </label>
-                    <div class="border border-gray-300 rounded-md p-4 max-h-48 overflow-y-auto">
-                        @foreach($holidays as $holiday)
-                        <label class="flex items-center py-2 hover:bg-gray-50 px-2 rounded cursor-pointer">
-                            <input type="checkbox"
-                                   name="selected_holidays[]"
-                                   value="{{ $holiday->id }}"
-                                   class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                            <span class="ml-3 text-sm text-gray-900">
-                                {{ $holiday->name }} - {{ \Carbon\Carbon::parse($holiday->date)->format('M j, Y') }}
-                            </span>
-                        </label>
-                        @endforeach
-                    </div>
-                </div>
-
-                <!-- Special Instructions -->
-                <div>
-                    <label for="special_instructions" class="block text-sm font-medium text-gray-700">
-                        Special Instructions
-                    </label>
-                    <textarea name="special_instructions" id="special_instructions" rows="3"
-                              class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                              placeholder="Flag placement instructions, special requests, etc.">{{ old('special_instructions') }}</textarea>
-                </div>
-            </div>
-        </div>
-
-        <!-- Payment Information -->
-        <div class="bg-white shadow rounded-lg overflow-hidden mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 class="text-lg font-medium text-gray-900">3. Payment Information</h3>
-            </div>
-
-            <div class="px-6 py-4 space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="payment_status" class="block text-sm font-medium text-gray-700">
-                            Payment Status <span class="text-red-500">*</span>
-                        </label>
-                        <select name="payment_status" id="payment_status" x-model="paymentStatus"
-                                class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 @error('payment_status') border-red-300 @enderror">
-                            <option value="">-- Select Status --</option>
-                            <option value="paid">Paid</option>
-                            <option value="pending">Pending Payment</option>
-                            <option value="comp">Complimentary (Free)</option>
-                        </select>
-                        @error('payment_status')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div x-show="paymentStatus === 'paid'" x-cloak>
-                        <label for="payment_method" class="block text-sm font-medium text-gray-700">
-                            Payment Method
-                        </label>
-                        <select name="payment_method" id="payment_method"
-                                class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="">-- Select Method --</option>
-                            <option value="card">Credit/Debit Card</option>
-                            <option value="cash">Cash</option>
-                            <option value="check">Check</option>
-                            <option value="comp">Complimentary</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div x-show="paymentStatus === 'paid'" x-cloak>
-                    <label for="stripe_payment_intent_id" class="block text-sm font-medium text-gray-700">
-                        Stripe Payment Intent ID (if applicable)
-                    </label>
-                    <input type="text" name="stripe_payment_intent_id" id="stripe_payment_intent_id"
-                           value="{{ old('stripe_payment_intent_id') }}"
-                           placeholder="pi_xxxxxxxxxxxxx"
-                           class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                    <p class="mt-1 text-xs text-gray-500">Enter Stripe payment intent ID if payment was processed through Stripe</p>
+                    <p class="mt-1 text-sm text-gray-500">These instructions will be visible to staff when placing flags.</p>
                 </div>
 
                 <!-- Admin Notes -->
@@ -393,103 +271,73 @@
                     <label for="notes" class="block text-sm font-medium text-gray-700">
                         Admin Notes
                     </label>
-                    <textarea name="notes" id="notes" rows="3"
-                              class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                              placeholder="Internal notes about this order...">{{ old('notes') }}</textarea>
+                    <textarea id="notes" name="notes" rows="4"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('notes') border-red-300 @enderror"
+                              placeholder="Add internal notes about this subscription...">{{ old('notes') }}</textarea>
+                    @error('notes')
+                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                    <p class="mt-1 text-sm text-gray-500">These notes are only visible to admin users.</p>
                 </div>
-            </div>
-        </div>
 
-        <!-- Action Buttons -->
-        <div class="flex items-center justify-end space-x-3">
-            <a href="{{ route('admin.subscriptions.index') }}"
-               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                Cancel
-            </a>
-            <button type="submit"
-                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                Create Order
-            </button>
-        </div>
-    </form>
+                <input type="hidden" name="use_address_as_placement" value="1">
+            </div>
+
+            <!-- Form Actions -->
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <a href="{{ route('admin.subscriptions.index') }}"
+                   class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Create Subscription
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
-@push('scripts')
 <script>
-function orderForm() {
+function subscriptionForm() {
     return {
-        customerType: '{{ old("customer_type", "existing") }}',
-        selectedCustomerId: '{{ old("customer_id") }}',
-        customerInfo: {
-            email: '',
-            phone: '',
-            address: '',
-            city: '',
-            state: '',
-            zip: ''
-        },
-        createAccount: {{ old('create_account', 0) }},
-        subscriptionType: '{{ old("type") }}',
-        selectedProducts: [],
-        totalAmount: 0,
-        paymentStatus: '{{ old("payment_status") }}',
+        customerType: 'existing',
+        userId: '',
+        customerAddress: '',
+        newCustomerAddress: '',
+        flagProductId: '',
+        selectedPrice: 0,
+        selectedProductName: '',
 
-        init() {
-            // Restore selected products from old input if validation failed
-            const oldProducts = @json(old('flag_products', []));
-            if (oldProducts.length > 0) {
-                this.selectedProducts = oldProducts.map(id => String(id));
-                this.$nextTick(() => {
-                    this.calculateTotal();
-                });
-            }
-
-            // Load customer info if customer was selected
-            if (this.selectedCustomerId) {
-                this.loadCustomerInfo();
-            }
-        },
-
-        loadCustomerInfo() {
-            const select = document.getElementById('customer_id');
+        fetchCustomerAddress() {
+            const select = document.getElementById('user_id');
             const option = select.options[select.selectedIndex];
-
-            if (option.value) {
-                this.customerInfo = {
-                    email: option.dataset.email || '',
-                    phone: option.dataset.phone || '',
-                    address: option.dataset.address || '',
-                    city: option.dataset.city || '',
-                    state: option.dataset.state || '',
-                    zip: option.dataset.zip || ''
-                };
+            if (option && option.value) {
+                const address = option.getAttribute('data-address');
+                const city = option.getAttribute('data-city');
+                const state = option.getAttribute('data-state');
+                const zip = option.getAttribute('data-zip');
+                this.customerAddress = `${address}, ${city}, ${state} ${zip}`;
+            } else {
+                this.customerAddress = '';
             }
         },
 
-        calculateTotal() {
-            let total = 0;
-
-            if (!this.subscriptionType) {
-                this.totalAmount = 0;
-                return;
+        updatePrice() {
+            const select = document.getElementById('flag_product_id');
+            const option = select.options[select.selectedIndex];
+            if (option && option.value) {
+                this.selectedPrice = parseInt(option.getAttribute('data-price'));
+                this.selectedProductName = option.getAttribute('data-name');
+            } else {
+                this.selectedPrice = 0;
+                this.selectedProductName = '';
             }
-
-            const checkboxes = document.querySelectorAll('input[name="flag_products[]"]:checked');
-
-            checkboxes.forEach(checkbox => {
-                const price = this.subscriptionType === 'annual'
-                    ? parseFloat(checkbox.dataset.annualPrice)
-                    : parseFloat(checkbox.dataset.onetimePrice);
-                total += price;
-            });
-
-            this.totalAmount = total;
         }
     }
 }
 </script>
-@endpush
 @endsection

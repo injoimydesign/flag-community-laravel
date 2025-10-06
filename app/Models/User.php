@@ -18,8 +18,8 @@ class User extends Authenticatable
     protected $fillable = [
         'first_name',
         'last_name',
+        'name', // Add this to fillable
         'email',
-        'password',
         'phone',
         'address',
         'city',
@@ -27,8 +27,9 @@ class User extends Authenticatable
         'zip_code',
         'latitude',
         'longitude',
-        'in_service_area',
+        'password',
         'role',
+        'in_service_area',
     ];
 
     /**
@@ -88,6 +89,26 @@ class User extends Authenticatable
 
     // Helper methods
 
+    /**
+     * Get the user's full name.
+     * This accessor ensures we always have a name even if only first_name and last_name are set.
+     */
+    public function getNameAttribute($value)
+    {
+        // If name column exists and has a value, return it
+        if ($value) {
+            return $value;
+        }
+        
+        // Otherwise, construct from first_name and last_name
+        if ($this->first_name || $this->last_name) {
+            return trim($this->first_name . ' ' . $this->last_name);
+        }
+        
+        return null;
+    }
+    
+    
     /**
      * Get the user's full name.
      */
@@ -170,4 +191,15 @@ class User extends Authenticatable
 
           return $this->in_service_area;
       }
+    
+    /**
+     * Get flag placements through subscriptions.
+     */
+    public function flagPlacements()
+    {
+        return $this->hasManyThrough(
+            \App\Models\FlagPlacement::class,
+            \App\Models\Subscription::class
+        );
+    }
 }

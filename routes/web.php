@@ -98,12 +98,14 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/flag-products/pricing-suggestions', [FlagProductController::class, 'getPricingSuggestions'])->name('flag-products.pricing-suggestions');
     Route::get('/flag-products/{flagProduct}/inventory-history', [FlagProductController::class, 'inventoryHistory'])->name('flag-products.inventory-history');
     Route::post('/flag-products/{flagProduct}/duplicate', [FlagProductController::class, 'duplicate'])->name('flag-products.duplicate');
-    
+
     // Flag Placements
 Route::get('/placements', [PlacementController::class, 'index'])->name('placements.index');
+    Route::get('/placements/create', [App\Http\Controllers\Admin\PlacementController::class, 'create'])->name('placements.create');
 Route::get('/placements/calendar', [PlacementController::class, 'calendar'])->name('placements.calendar');
 Route::get('/placements/calendar-data', [PlacementController::class, 'getCalendarData'])->name('placements.calendar-data');
 Route::get('/placements/export', [PlacementController::class, 'export'])->name('placements.export');
+    Route::post('/placements', [App\Http\Controllers\Admin\PlacementController::class, 'store'])->name('placements.store');
 Route::get('/placements/{placement}', [PlacementController::class, 'show'])->name('placements.show');
 Route::post('/placements/{placement}/place', [PlacementController::class, 'place'])->name('placements.place');
 Route::post('/placements/{placement}/remove', [PlacementController::class, 'remove'])->name('placements.remove');
@@ -123,6 +125,31 @@ Route::post('/placements/send-reminders', [PlacementController::class, 'sendRemi
     Route::post('/subscriptions/{subscription}/reactivate', [SubscriptionController::class, 'reactivate'])->name('subscriptions.reactivate');
     Route::get('/subscriptions/export', [SubscriptionController::class, 'export'])->name('subscriptions.export');
     Route::get('/subscriptions/metrics', [SubscriptionController::class, 'getMetrics'])->name('subscriptions.metrics');
+
+    // Subscription routes
+    Route::get('/subscriptions', [App\Http\Controllers\Admin\SubscriptionController::class, 'index'])
+        ->name('subscriptions.index');
+
+    Route::get('/subscriptions/create', [App\Http\Controllers\Admin\SubscriptionController::class, 'create'])
+        ->name('subscriptions.create');
+
+    Route::post('/subscriptions', [App\Http\Controllers\Admin\SubscriptionController::class, 'store'])
+        ->name('subscriptions.store');
+
+    Route::get('/subscriptions/{subscription}', [App\Http\Controllers\Admin\SubscriptionController::class, 'show'])
+        ->name('subscriptions.show');
+
+    Route::get('/subscriptions/{subscription}/edit', [App\Http\Controllers\Admin\SubscriptionController::class, 'edit'])
+        ->name('subscriptions.edit');
+
+    Route::put('/subscriptions/{subscription}', [App\Http\Controllers\Admin\SubscriptionController::class, 'update'])
+        ->name('subscriptions.update');
+
+    Route::delete('/subscriptions/{subscription}', [App\Http\Controllers\Admin\SubscriptionController::class, 'destroy'])
+        ->name('subscriptions.destroy');
+
+    Route::get('/subscriptions/export', [App\Http\Controllers\Admin\SubscriptionController::class, 'export'])
+        ->name('subscriptions.export');
 
     // Customers
     Route::resource('customers', CustomerController::class);
