@@ -286,115 +286,134 @@ class PlacementController extends Controller
     }
 
     /**
-     * Store a newly created placement in storage.
-     */
-    public function store(Request $request)
-    {
-        $validatedData = $request->validate([
-            'subscription_id' => 'required|exists:subscriptions,id',
-            'status' => 'required|in:scheduled,placed,removed,skipped',
-            'placement_address' => 'nullable|string|max:255',
-            'placement_city' => 'nullable|string|max:255',
-            'placement_state' => 'nullable|string|max:255',
-            'placement_zip_code' => 'nullable|string|max:10',
-            'notes' => 'nullable|string|max:1000',
-            'create_all_holidays' => 'nullable|boolean',
-        ]);
+ * Store a newly created placement in storage.
+ * FIXED: Creates ONE placement with multiple holidays associated
+ */
+public function store(Request $request)
+{
+    $validatedData = $request->validate([
+        'subscription_id' => 'required|exists:subscriptions,id',
+        'status' => 'required|in:scheduled,placed,removed,skipped',
+        'placement_address' => 'nullable|string|max:255',
+        'placement_city' => 'nullable|string|max:255',
+        'placement_state' => 'nullable|string|max:255',
+        'placement_zip_code' => 'nullable|string|max:10',
+        'notes' => 'nullable|string|max:1000',
+        'holiday_ids' => 'nullable|array',
+        'holiday_ids.*' => 'exists:holidays,id',
+    ]);
 
-        // Get the subscription to access the flag product
-        $subscription = \App\Models\Subscription::with('flagProduct')->findOrFail($request->subscription_id);
+    // Get the subscription with its items and flag products
+    $subscription = \App\Models\Subscription::with(['items.flagProduct', 'user'])
+        ->findOrFail($request->subscription_id);
 
-        // If no address provided, use subscription user's address
-        $placementAddress = $request->placement_address;
-        $placementCity = $request->placement_city;
-        $placementState = $request->placement_state;
-        $placementZipCode = $request->placement_zip_code;
+    // Get the flag product ID from subscription
+    $flagProductId = null;
 
-        if (!$placementAddress && $subscription->user) {
-            $placementAddress = $subscription->user->address;
-            $placementCity = $subscription->user->city;
-            $placementState = $subscription->user->state;
-            $placementZipCode = $subscription->user->zip_code;
-        }
-
-        // Get ALL active holidays
-        $holidays = \App\Models\Holiday::where('active', true)->get();
-
-        if ($holidays->isEmpty()) {
-            return redirect()->back()
-                ->with('error', 'No active holidays found to create placements.');
-        }
-
-        $createdCount = 0;
-        $skippedCount = 0;
-        $currentYear = now()->year;
-
-        foreach ($holidays as $holiday) {
-            // Check if placement already exists for this subscription and holiday
-            $existingPlacement = \App\Models\FlagPlacement::where([
-                'subscription_id' => $request->subscription_id,
-                'holiday_id' => $holiday->id,
-            ])->whereYear('placement_date', $currentYear)->first();
-
-            if ($existingPlacement) {
-                $skippedCount++;
-                continue;
-            }
-
-            // Calculate placement and removal dates based on holiday
-            $holidayDate = \Carbon\Carbon::parse($holiday->date)->year($currentYear);
-            $placementDate = $holidayDate->copy()->subDays($holiday->placement_days_before ?? 1);
-            $removalDate = $holidayDate->copy()->addDays($holiday->removal_days_after ?? 1);
-
-            // Create the placement
-            $placement = \App\Models\FlagPlacement::create([
-                'subscription_id' => $request->subscription_id,
-                'holiday_id' => $holiday->id,
-                'flag_product_id' => $subscription->flag_product_id,
-                'placement_date' => $placementDate,
-                'removal_date' => $removalDate,
-                'status' => $request->status,
-                'placement_address' => $placementAddress,
-                'placement_city' => $placementCity,
-                'placement_state' => $placementState,
-                'placement_zip_code' => $placementZipCode,
-                'notes' => $request->notes,
-            ]);
-
-            // If status is 'placed', set placed_at timestamp
-            if ($request->status === 'placed') {
-                $placement->update([
-                    'placed_at' => now(),
-                    'placed_by' => auth()->id(),
-                ]);
-            }
-
-            // If status is 'removed', set removed_at timestamp
-            if ($request->status === 'removed') {
-                $placement->update([
-                    'removed_at' => now(),
-                    'removed_by' => auth()->id(),
-                ]);
-            }
-
-            // If status is 'skipped', set skipped_at timestamp
-            if ($request->status === 'skipped') {
-                $placement->update([
-                    'skipped_at' => now(),
-                ]);
-            }
-
-            $createdCount++;
-        }
-
-        $message = "Successfully created {$createdCount} placement(s) for all active holidays.";
-        if ($skippedCount > 0) {
-            $message .= " Skipped {$skippedCount} duplicate(s).";
-        }
-
-        return redirect()->route('admin.placements.index')
-            ->with('success', $message);
+    if (isset($subscription->flag_product_id)) {
+        $flagProductId = $subscription->flag_product_id;
+    } elseif ($subscription->items && $subscription->items->isNotEmpty()) {
+        $flagProductId = $subscription->items->first()->flag_product_id;
+    } elseif (isset($subscription->flagProduct)) {
+        $flagProductId = $subscription->flagProduct->id;
     }
+
+    if (!$flagProductId) {
+        return redirect()->back()
+            ->with('error', 'Unable to determine flag product for this subscription.')
+            ->withInput();
+    }
+
+    // If no address provided, use subscription user's address
+    $placementAddress = $request->placement_address ?: $subscription->user->address ?? null;
+    $placementCity = $request->placement_city ?: $subscription->user->city ?? null;
+    $placementState = $request->placement_state ?: $subscription->user->state ?? null;
+    $placementZipCode = $request->placement_zip_code ?: $subscription->user->zip_code ?? null;
+
+    // Get selected holidays (or all active if none selected)
+    $holidayIds = $request->holiday_ids;
+    if (empty($holidayIds)) {
+        $holidayIds = \App\Models\Holiday::where('active', true)->pluck('id')->toArray();
+    }
+
+    if (empty($holidayIds)) {
+        return redirect()->back()
+            ->with('error', 'No holidays available. Please create at least one active holiday.')
+            ->withInput();
+    }
+
+    // Create ONE placement per subscription per address
+    // Check if placement already exists for this subscription
+    $existingPlacement = \App\Models\FlagPlacement::where([
+        'subscription_id' => $request->subscription_id,
+        'placement_address' => $placementAddress,
+    ])->first();
+
+    if ($existingPlacement) {
+        return redirect()->back()
+            ->with('error', 'A placement already exists for this subscription at this address.')
+            ->withInput();
+    }
+
+    // For the placement date, use the earliest holiday date
+    $earliestHoliday = \App\Models\Holiday::whereIn('id', $holidayIds)
+        ->orderBy('date')
+        ->first();
+
+    $currentYear = now()->year;
+    $holidayDate = \Carbon\Carbon::parse($earliestHoliday->date)->year($currentYear);
+    $placementDate = $holidayDate->copy()->subDays($earliestHoliday->placement_days_before ?? 1);
+    $removalDate = $holidayDate->copy()->addDays($earliestHoliday->removal_days_after ?? 1);
+
+    // Create ONE placement
+    $placement = \App\Models\FlagPlacement::create([
+        'subscription_id' => $request->subscription_id,
+        'holiday_id' => $earliestHoliday->id, // Use first holiday as primary
+        'flag_product_id' => $flagProductId,
+        'placement_date' => $placementDate,
+        'removal_date' => $removalDate,
+        'status' => $request->status,
+        'placement_address' => $placementAddress,
+        'placement_city' => $placementCity,
+        'placement_state' => $placementState,
+        'placement_zip_code' => $placementZipCode,
+        'notes' => $request->notes,
+    ]);
+
+    // Associate all selected holidays with this placement
+    // Store in a JSON field or separate pivot table
+    // Option 1: If you have a holiday_ids JSON field in flag_placements
+    //if (\Schema::hasColumn('flag_placements', 'holiday_ids')) {
+    //      $placement->update([
+    //        'holiday_ids' => $holidayIds
+    //  ]);
+    //}
+    // Option 2: If you have a pivot table (recommended)
+     $placement->holidays()->sync($holidayIds);
+
+    // Set timestamps based on status
+    if ($request->status === 'placed') {
+        $placement->update([
+            'placed_at' => now(),
+            'placed_by' => auth()->id(),
+        ]);
+    } elseif ($request->status === 'removed') {
+        $placement->update([
+            'removed_at' => now(),
+            'removed_by' => auth()->id(),
+        ]);
+    } elseif ($request->status === 'skipped') {
+        $placement->update([
+            'skipped_at' => now(),
+        ]);
+    }
+
+    $holidayCount = count($holidayIds);
+    $holidayNames = \App\Models\Holiday::whereIn('id', $holidayIds)->pluck('name')->implode(', ');
+
+    return redirect()->route('admin.placements.index')
+        ->with('success', "Placement created successfully and associated with {$holidayCount} holiday(s): {$holidayNames}");
+}
 
     /**
      * Bulk update placements.
@@ -500,6 +519,63 @@ class PlacementController extends Controller
         return redirect()->back()
             ->with('success', "Reminders sent to {$sentCount} customers.");
     }
+
+    /**
+ * Remove the specified placement from storage.
+ */
+public function destroy(FlagPlacement $placement)
+{
+    try {
+        // Store placement details for the success message
+        $customerName = $placement->subscription->user->name ?? 'Customer';
+        $holidayName = $placement->holiday->name ?? 'Holiday';
+
+        // Delete the placement
+        $placement->delete();
+
+        return redirect()->back()
+            ->with('success', "Placement for {$customerName} ({$holidayName}) deleted successfully.");
+
+    } catch (\Exception $e) {
+        \Log::error('Failed to delete placement: ' . $e->getMessage());
+
+        return redirect()->back()
+            ->with('error', 'Failed to delete placement. Please try again.');
+    }
+}
+
+/**
+ * Bulk delete placements.
+ */
+public function bulkDelete(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'placement_ids' => 'required|array|min:1',
+        'placement_ids.*' => 'exists:flag_placements,id',
+    ]);
+
+    if ($validator->fails()) {
+        return redirect()->back()
+            ->withErrors($validator)
+            ->with('error', 'Invalid placement selection.');
+    }
+
+    try {
+        $count = FlagPlacement::whereIn('id', $request->placement_ids)->delete();
+
+        return redirect()->back()
+            ->with('success', "{$count} placement(s) deleted successfully.");
+
+    } catch (\Exception $e) {
+        \Log::error('Failed to bulk delete placements: ' . $e->getMessage());
+
+        return redirect()->back()
+            ->with('error', 'Failed to delete placements. Please try again.');
+    }
+}
+
+
+
 
     /**
      * Export placements to CSV.

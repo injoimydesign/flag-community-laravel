@@ -8,6 +8,7 @@ use App\Models\Route;
 use App\Models\Holiday;
 use App\Models\User;
 use App\Models\FlagPlacement;
+use App\Models\Subscription;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
@@ -99,7 +100,10 @@ class RouteController extends Controller
     }
 
     /**
-     * Display the specified route with holiday filter.
+     * Display the specified route with optional holiday filter for viewing.
+     * Customers are added to routes WITHOUT being tied to a specific holiday.
+     * The holiday filter is only for VIEWING the list.
+     * UPDATED: Works with pivot table for multiple holidays per placement
      */
     public function show(Route $route, Request $request)
     {
@@ -108,19 +112,78 @@ class RouteController extends Controller
         // Get all holidays
         $holidays = Holiday::active()->ordered()->get();
 
-        // Get selected holiday if provided
+        // Get selected holiday if provided (for filtering VIEW only)
         $selectedHolidayId = $request->get('holiday_id');
 
-        // Get customers on this route
+        // Get all customers on this route with their holidays
         $customers = $route->customers();
 
-        // Get placements for the selected holiday
-        $placements = collect();
+        // Get customer details with their holidays
+        $customersWithHolidays = $customers->map(function ($customer) use ($selectedHolidayId) {
+            // Get active subscription for this customer
+            $subscription = Subscription::where('user_id', $customer->id)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$subscription) {
+                return null;
+            }
+
+            // Get all holidays for this customer
+            // Check if using pivot table or direct relationship
+            $placements = FlagPlacement::where('subscription_id', $subscription->id)
+                ->where('status', 'scheduled')
+                ->with(['holiday', 'holidays']) // Load both single and multiple holidays
+                ->get();
+
+            $allHolidays = collect();
+
+            foreach ($placements as $placement) {
+                // Check if using pivot table (many-to-many)
+                if (method_exists($placement, 'holidays') && $placement->holidays()->exists()) {
+                    // Using pivot table
+                    $holidaysFromPivot = $placement->holidays->map(function ($holiday) use ($placement) {
+                        return [
+                            'id' => $holiday->id,
+                            'name' => $holiday->name,
+                            'date' => $holiday->date->format('M d, Y'),
+                            'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
+                            'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
+                        ];
+                    });
+                    $allHolidays = $allHolidays->merge($holidaysFromPivot);
+                }
+                // Fallback to single holiday_id
+                elseif ($placement->holiday) {
+                    $allHolidays->push([
+                        'id' => $placement->holiday->id,
+                        'name' => $placement->holiday->name,
+                        'date' => $placement->holiday->date->format('M d, Y'),
+                        'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
+                        'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
+                    ]);
+                }
+            }
+
+            $allHolidays = $allHolidays->unique('id')->values();
+
+            return [
+                'user' => $customer,
+                'holidays' => $allHolidays,
+                'has_selected_holiday' => $selectedHolidayId ?
+                    $allHolidays->contains('id', (int)$selectedHolidayId) : true,
+            ];
+        })
+        ->filter(); // Remove nulls
+
+        // If a holiday is selected, filter VIEW to only show customers with that holiday
         if ($selectedHolidayId) {
-            $placements = $this->getPlacementsForRoute($route, $selectedHolidayId);
+            $customersWithHolidays = $customersWithHolidays->filter(function ($item) {
+                return $item['has_selected_holiday'];
+            });
         }
 
-        return view('admin.routes.show', compact('route', 'customers', 'holidays', 'selectedHolidayId', 'placements'));
+        return view('admin.routes.show', compact('route', 'customersWithHolidays', 'holidays', 'selectedHolidayId'));
     }
 
     /**
@@ -179,69 +242,98 @@ class RouteController extends Controller
     /**
      * Get available placements for a route.
      * Shows one address per customer with all their holidays.
+     * NOT filtered by holiday - shows ALL available customers.
+     * UPDATED: Works with pivot table for multiple holidays per placement
      */
     public function getAvailablePlacements(Route $route, Request $request)
     {
-        // Get customers already on this route
-        $existingCustomerIds = $route->customer_order ?: [];
+        try {
+            // Get customers already on this route
+            $existingCustomerIds = $route->customer_order ?: [];
 
-        // Get all active subscriptions with placements, excluding customers already on route
-        $subscriptions = \App\Models\Subscription::with(['user', 'flagPlacements.holiday'])
-            ->where('status', 'active')
-            ->whereHas('user', function ($query) use ($existingCustomerIds) {
-                if (!empty($existingCustomerIds)) {
-                    $query->whereNotIn('id', $existingCustomerIds);
-                }
-            })
-            ->get();
-
-        // Group placements by customer
-        $availableCustomers = $subscriptions->map(function ($subscription) use ($route) {
-            $user = $subscription->user;
-
-            // Get all holidays for this customer based on route type
-            $holidays = $subscription->flagPlacements()
-                ->with('holiday')
-                ->where('status', 'scheduled')
-                ->get()
-                ->filter(function ($placement) use ($route) {
-                    // Filter by route type (placement vs removal)
-                    if ($route->type === 'placement') {
-                        return true; // All scheduled placements
-                    } else {
-                        return true; // For removal routes
+            // Get all active subscriptions with placements, excluding customers already on route
+            $subscriptions = Subscription::with(['user'])
+                ->where('status', 'active')
+                ->whereHas('user', function ($query) use ($existingCustomerIds) {
+                    if (!empty($existingCustomerIds)) {
+                        $query->whereNotIn('id', $existingCustomerIds);
                     }
                 })
-                ->map(function ($placement) {
-                    return [
-                        'id' => $placement->holiday->id,
-                        'name' => $placement->holiday->name,
-                        'date' => $placement->holiday->date->format('M d, Y'),
-                        'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
-                        'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
-                    ];
-                })
-                ->unique('id')
-                ->values();
+                ->get();
 
-            return [
-                'user_id' => $user->id,
-                'name' => $user->name,
-                'address' => $user->full_address,
-                'phone' => $user->phone,
-                'email' => $user->email,
-                'holidays' => $holidays,
-                'holiday_count' => $holidays->count(),
-            ];
-        })
-        ->filter(function ($customer) {
-            // Only include customers with holidays
-            return $customer['holiday_count'] > 0;
-        })
-        ->sortBy('name')
-        ->values();
+            // Group placements by customer
+            $availableCustomers = $subscriptions->map(function ($subscription) use ($route) {
+                $user = $subscription->user;
 
-        return response()->json($availableCustomers);
+                if (!$user) {
+                    return null;
+                }
+
+                // Get all placements for this subscription
+                $placements = FlagPlacement::where('subscription_id', $subscription->id)
+                    ->where('status', 'scheduled')
+                    ->with(['holiday', 'holidays']) // Load both single and multiple holidays
+                    ->get();
+
+                $allHolidays = collect();
+
+                foreach ($placements as $placement) {
+                    // Check if using pivot table (many-to-many)
+                    if (method_exists($placement, 'holidays') && $placement->holidays()->exists()) {
+                        // Using pivot table
+                        $holidaysFromPivot = $placement->holidays->map(function ($holiday) use ($placement) {
+                            return [
+                                'id' => $holiday->id,
+                                'name' => $holiday->name,
+                                'date' => $holiday->date->format('M d, Y'),
+                                'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
+                                'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
+                            ];
+                        });
+                        $allHolidays = $allHolidays->merge($holidaysFromPivot);
+                    }
+                    // Fallback to single holiday_id
+                    elseif ($placement->holiday) {
+                        $allHolidays->push([
+                            'id' => $placement->holiday->id,
+                            'name' => $placement->holiday->name,
+                            'date' => $placement->holiday->date->format('M d, Y'),
+                            'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
+                            'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
+                        ]);
+                    }
+                }
+
+                $allHolidays = $allHolidays->unique('id')->values();
+
+                return [
+                    'user_id' => $user->id,
+                    'name' => $user->name,
+                    'address' => $user->address . ', ' . $user->city . ', ' . $user->state . ' ' . $user->zip_code,
+                    'phone' => $user->phone ?? '',
+                    'email' => $user->email ?? '',
+                    'holidays' => $allHolidays,
+                    'holiday_count' => $allHolidays->count(),
+                ];
+            })
+            ->filter(function ($customer) {
+                // Only include customers with holidays and valid user data
+                return $customer !== null && $customer['holiday_count'] > 0;
+            })
+            ->sortBy('name')
+            ->values();
+
+            return response()->json($availableCustomers);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getAvailablePlacements: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+
+            return response()->json([
+                'error' => 'Failed to load available customers',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -291,16 +383,8 @@ class RouteController extends Controller
      */
     public function optimizeRoute(Route $route, Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'holiday_id' => 'required|exists:holidays,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['error' => 'Invalid holiday'], 400);
-        }
-
         try {
-            $optimizedOrder = $route->optimizeWithGoogleMaps($request->holiday_id);
+            $optimizedOrder = $route->optimizeWithGoogleMaps();
 
             return response()->json([
                 'success' => true,
@@ -319,16 +403,8 @@ class RouteController extends Controller
      */
     public function getDirections(Route $route, Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'holiday_id' => 'required|exists:holidays,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['error' => 'Invalid holiday'], 400);
-        }
-
         try {
-            $directions = $route->getGoogleMapsDirections($request->holiday_id);
+            $directions = $route->getGoogleMapsDirections();
 
             return response()->json([
                 'success' => true,
@@ -449,24 +525,7 @@ class RouteController extends Controller
     }
 
     /**
-     * Get placements for a specific route and holiday.
+     * Get placements for a specific route (removed - no longer needed).
      */
-    private function getPlacementsForRoute(Route $route, $holidayId)
-    {
-        $customerIds = $route->customer_order ?: [];
-
-        if (empty($customerIds)) {
-            return collect();
-        }
-
-        return FlagPlacement::with(['subscription.user', 'holiday', 'flagProduct'])
-            ->whereHas('subscription', function ($query) use ($customerIds) {
-                $query->whereIn('user_id', $customerIds);
-            })
-            ->where('holiday_id', $holidayId)
-            ->get()
-            ->sortBy(function ($placement) use ($customerIds) {
-                return array_search($placement->subscription->user_id, $customerIds);
-            });
-    }
+    // Removed - we now show customers with all their holidays
 }

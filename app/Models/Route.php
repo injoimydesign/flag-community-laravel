@@ -18,6 +18,7 @@ class Route extends Model
     protected $fillable = [
         'name',
         'type',
+        'holiday_id',
         'assigned_user_id',
         'customer_order',
         'status',
@@ -32,6 +33,14 @@ class Route extends Model
     ];
 
     // Relationships
+
+    /**
+     * Get the holiday for this route (optional - for backward compatibility).
+     */
+    public function holiday()
+    {
+        return $this->belongsTo(Holiday::class);
+    }
 
     /**
      * Get the assigned user (driver/technician).

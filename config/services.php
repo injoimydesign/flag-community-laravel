@@ -35,4 +35,34 @@ return [
         ],
     ],
 
+    // ... existing service configurations ...
+
+    /*
+    |--------------------------------------------------------------------------
+    | Google Services Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for Google Maps API and other Google services.
+    |
+    | To get a Google Maps API key:
+    | 1. Go to https://console.cloud.google.com/
+    | 2. Create a new project or select an existing one
+    | 3. Enable the following APIs:
+    |    - Maps JavaScript API
+    |    - Directions API
+    |    - Geocoding API
+    | 4. Create an API key in Credentials
+    | 5. Add the key to your .env file as GOOGLE_MAPS_API_KEY
+    |
+    */
+
+    'google' => [
+        'maps_api_key' => env('GOOGLE_MAPS_API_KEY', ''),
+
+        // Optional: Restrict API key usage by HTTP referer
+        'maps_referer_restrictions' => [
+            env('APP_URL'),
+        ],
+    ],
+
 ];

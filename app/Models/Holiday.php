@@ -44,11 +44,16 @@ class Holiday extends Model
     // Relationships
 
     /**
-     * Get flag placements for this holiday.
+     * Get all placements associated with this holiday (many-to-many)
      */
     public function flagPlacements()
     {
-        return $this->hasMany(FlagPlacement::class);
+        return $this->belongsToMany(
+            FlagPlacement::class,
+            'flag_placement_holiday',
+            'holiday_id',
+            'flag_placement_id'
+        )->withTimestamps();
     }
 
     /**

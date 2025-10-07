@@ -58,18 +58,35 @@ class User extends Authenticatable
      */
     public function subscriptions()
     {
-        return $this->hasMany(\App\Models\Subscription::class);
+        return $this->hasMany(Subscription::class);
     }
-
-
 
     /**
      * Get the active subscription for this user.
      */
-    public function activeSubscriptions()
+    public function activeSubscription()
     {
-        return $this->hasMany(\App\Models\Subscription::class)->where('status', 'active');
+        return $this->hasOne(Subscription::class)
+            ->where('status', 'active')
+            ->latest();
     }
+
+    /**
+     * Get the user's full address.
+     * This is used by the Google Maps integration.
+     */
+    public function getFullAddressAttribute()
+    {
+        $parts = array_filter([
+            $this->address,
+            $this->city,
+            $this->state,
+            $this->zip_code,
+        ]);
+
+        return implode(', ', $parts);
+    }
+
 
     /**
      * Get all notifications for this user.
@@ -99,16 +116,16 @@ class User extends Authenticatable
         if ($value) {
             return $value;
         }
-        
+
         // Otherwise, construct from first_name and last_name
         if ($this->first_name || $this->last_name) {
             return trim($this->first_name . ' ' . $this->last_name);
         }
-        
+
         return null;
     }
-    
-    
+
+
     /**
      * Get the user's full name.
      */
@@ -154,14 +171,6 @@ class User extends Authenticatable
           return $this->role === 'customer';
       }
 
-    
-      /**
-       * Get the user's full address.
-       */
-      public function getFullAddressAttribute(): string
-      {
-          return "{$this->address}, {$this->city}, {$this->state} {$this->zip_code}";
-      }
 
       /**
        * Scope to get only admin users.
@@ -191,7 +200,7 @@ class User extends Authenticatable
 
           return $this->in_service_area;
       }
-    
+
     /**
      * Get flag placements through subscriptions.
      */

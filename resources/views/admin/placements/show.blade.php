@@ -89,8 +89,8 @@
                 </div>
 
                 <div>
-                    <dt class="text-sm font-medium text-gray-500">Holiday</dt>
-                    <dd class="mt-1 text-sm text-gray-900">
+                    <dt class="text-sm font-medium text-gray-500">Holidays</dt>
+                    <!--<dd class="mt-1 text-sm text-gray-900">
                         @if($placement->holiday)
                             <a href="{{ route('admin.holidays.show', $placement->holiday) }}" class="text-indigo-600 hover:text-indigo-900">
                                 {{ $placement->holiday->name }}
@@ -98,7 +98,8 @@
                         @else
                             N/A
                         @endif
-                    </dd>
+                    </dd>-->
+                    <dd>{{ $placement->holiday_names }}</dd>
                 </div>
 
                 <div>

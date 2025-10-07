@@ -99,25 +99,65 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/flag-products/{flagProduct}/inventory-history', [FlagProductController::class, 'inventoryHistory'])->name('flag-products.inventory-history');
     Route::post('/flag-products/{flagProduct}/duplicate', [FlagProductController::class, 'duplicate'])->name('flag-products.duplicate');
 
-    // Flag Placements
-Route::get('/placements', [PlacementController::class, 'index'])->name('placements.index');
-    Route::get('/placements/create', [App\Http\Controllers\Admin\PlacementController::class, 'create'])->name('placements.create');
-Route::get('/placements/calendar', [PlacementController::class, 'calendar'])->name('placements.calendar');
-Route::get('/placements/calendar-data', [PlacementController::class, 'getCalendarData'])->name('placements.calendar-data');
-Route::get('/placements/export', [PlacementController::class, 'export'])->name('placements.export');
-    Route::post('/placements', [App\Http\Controllers\Admin\PlacementController::class, 'store'])->name('placements.store');
-Route::get('/placements/{placement}', [PlacementController::class, 'show'])->name('placements.show');
-Route::post('/placements/{placement}/place', [PlacementController::class, 'place'])->name('placements.place');
-Route::post('/placements/{placement}/remove', [PlacementController::class, 'remove'])->name('placements.remove');
-Route::post('/placements/{placement}/skip', [PlacementController::class, 'skip'])->name('placements.skip');
-Route::post('/placements/bulk-update', [PlacementController::class, 'bulkUpdate'])->name('placements.bulk-update');
-Route::post('/placements/send-reminders', [PlacementController::class, 'sendReminders'])->name('placements.send-reminders');
+    // ============================================
+    // FLAG PLACEMENTS ROUTES
+    // ============================================
 
-    // Holidays
+    // Main CRUD routes
+    Route::get('/placements', [PlacementController::class, 'index'])->name('placements.index');
+    Route::get('/placements/create', [PlacementController::class, 'create'])->name('placements.create');
+    Route::post('/placements', [PlacementController::class, 'store'])->name('placements.store');
+    Route::get('/placements/{placement}', [PlacementController::class, 'show'])->name('placements.show');
+
+    // Status update actions
+    Route::post('/placements/{placement}/place', [PlacementController::class, 'place'])->name('placements.place');
+    Route::post('/placements/{placement}/remove', [PlacementController::class, 'remove'])->name('placements.remove');
+    Route::post('/placements/{placement}/skip', [PlacementController::class, 'skip'])->name('placements.skip');
+
+    // DELETE actions (NEW - Add these)
+    Route::delete('/placements/{placement}', [PlacementController::class, 'destroy'])->name('placements.destroy');
+    Route::post('/placements/bulk-delete', [PlacementController::class, 'bulkDelete'])->name('placements.bulk-delete');
+
+    // Bulk operations
+    Route::post('/placements/bulk-update', [PlacementController::class, 'bulkUpdate'])->name('placements.bulk-update');
+    Route::post('/placements/send-reminders', [PlacementController::class, 'sendReminders'])->name('placements.send-reminders');
+
+    // Calendar and export
+    Route::get('/placements/calendar', [PlacementController::class, 'calendar'])->name('placements.calendar');
+    Route::get('/placements/calendar-data', [PlacementController::class, 'getCalendarData'])->name('placements.calendar-data');
+    Route::get('/placements/export', [PlacementController::class, 'export'])->name('placements.export');
+
+    // ============================================
+    // HOLIDAYS ROUTES
+    // ============================================
     Route::resource('holidays', HolidayController::class);
     Route::post('/holidays/{holiday}/toggle-active', [HolidayController::class, 'toggleActive'])->name('holidays.toggle-active');
     Route::post('/holidays/{holiday}/generate-placements', [HolidayController::class, 'generatePlacements'])->name('holidays.generate-placements');
     Route::get('/holidays/export', [HolidayController::class, 'export'])->name('holidays.export');
+
+    // ============================================
+    // ROUTES (Route Management)
+    // ============================================
+    // Route Management
+    Route::resource('routes', RouteController::class);
+
+    // Route-specific actions
+    Route::post('/routes/{route}/start', [RouteController::class, 'start'])->name('routes.start');
+    Route::post('/routes/{route}/complete', [RouteController::class, 'complete'])->name('routes.complete');
+    Route::post('/routes/{route}/assign', [RouteController::class, 'assign'])->name('routes.assign');
+
+    // Placement management on routes
+    Route::get('/routes/{route}/available-placements', [RouteController::class, 'getAvailablePlacements'])->name('routes.available-placements');
+    Route::post('/routes/{route}/add-placement', [RouteController::class, 'addPlacement'])->name('routes.add-placement');
+    Route::post('/routes/{route}/remove-placement', [RouteController::class, 'removePlacement'])->name('routes.remove-placement');
+
+    // Route optimization
+    Route::post('/routes/{route}/optimize', [RouteController::class, 'optimizeRoute'])->name('routes.optimize');
+    Route::get('/routes/{route}/directions', [RouteController::class, 'getDirections'])->name('routes.directions');
+
+    // Export
+    Route::get('/routes/export', [RouteController::class, 'export'])->name('routes.export');
+
 
     // Subscriptions
     Route::resource('subscriptions', SubscriptionController::class);

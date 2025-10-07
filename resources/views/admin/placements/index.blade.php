@@ -5,262 +5,298 @@
 @section('page-title', 'Flag Placements')
 
 @section('content')
-<div class="space-y-6">
-    <!-- Header Actions -->
-    <div class="flex justify-between items-center">
+<div class="container mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
         <div>
-            <p class="text-sm text-gray-500">Manage flag placement schedules and track completion status</p>
+            <h1 class="text-3xl font-bold text-gray-900">Flag Placements</h1>
+            <p class="text-gray-600 mt-1">Manage scheduled flag placements</p>
         </div>
         <div class="flex space-x-3">
-            <a href="{{ route('admin.placements.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <a href="{{ route('admin.placements.create') }}" class="btn btn-primary">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
                 Create Placement
             </a>
-            <a href="{{ route('admin.placements.calendar') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                </svg>
-                Calendar View
-            </a>
-            <a href="{{ route('admin.placements.export', request()->all()) }}" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Export CSV
-            </a>
         </div>
     </div>
-    <!-- Statistics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <svg class="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-500">Total</p>
-                        <p class="text-2xl font-semibold text-gray-900">{{ $stats['total_placements'] }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                            <svg class="h-5 w-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-500">Scheduled</p>
-                        <p class="text-2xl font-semibold text-yellow-600">{{ $stats['scheduled_placements'] }}</p>
-                    </div>
-                </div>
-            </div>
+    @if(session('success'))
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+            {{ session('success') }}
         </div>
+    @endif
 
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                            <svg class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-500">Completed</p>
-                        <p class="text-2xl font-semibold text-green-600">{{ $stats['completed_placements'] }}</p>
-                    </div>
-                </div>
-            </div>
+    @if(session('error'))
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+            {{ session('error') }}
         </div>
-
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                            <svg class="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-500">Overdue</p>
-                        <p class="text-2xl font-semibold text-red-600">{{ $stats['overdue_placements'] }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    @endif
 
     <!-- Filters -->
-    <div class="bg-white shadow rounded-lg p-6">
-        <form method="GET" action="{{ route('admin.placements.index') }}" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
-                    <select name="status" id="status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">All Statuses</option>
-                        <option value="scheduled" {{ request('status') == 'scheduled' ? 'selected' : '' }}>Scheduled</option>
-                        <option value="placed" {{ request('status') == 'placed' ? 'selected' : '' }}>Placed</option>
-                        <option value="removed" {{ request('status') == 'removed' ? 'selected' : '' }}>Removed</option>
-                        <option value="skipped" {{ request('status') == 'skipped' ? 'selected' : '' }}>Skipped</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label for="holiday_id" class="block text-sm font-medium text-gray-700">Holiday</label>
-                    <select name="holiday_id" id="holiday_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">All Holidays</option>
-                        @foreach($holidays as $holiday)
-                            <option value="{{ $holiday->id }}" {{ request('holiday_id') == $holiday->id ? 'selected' : '' }}>
-                                {{ $holiday->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div>
-                    <label for="date_from" class="block text-sm font-medium text-gray-700">From Date</label>
-                    <input type="date" name="date_from" id="date_from" value="{{ request('date_from') }}"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-
-                <div>
-                    <label for="date_to" class="block text-sm font-medium text-gray-700">To Date</label>
-                    <input type="date" name="date_to" id="date_to" value="{{ request('date_to') }}"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-
-                <div class="md:col-span-4">
-                    <label for="search" class="block text-sm font-medium text-gray-700">Search</label>
-                    <input type="text" name="search" id="search" value="{{ request('search') }}"
-                           placeholder="Search by customer name or email..."
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <form method="GET" action="{{ route('admin.placements.index') }}" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Search -->
+            <div>
+                <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input type="text" name="search" id="search" value="{{ request('search') }}" placeholder="Customer name..." class="w-full border-gray-300 rounded-md">
             </div>
 
-            <div class="flex justify-end space-x-3">
-                <a href="{{ route('admin.placements.index') }}"
-                   class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                    Reset
-                </a>
-                <button type="submit"
-                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                    Apply Filters
-                </button>
+            <!-- Status Filter -->
+            <div>
+                <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" id="status" class="w-full border-gray-300 rounded-md">
+                    <option value="">All Statuses</option>
+                    <option value="scheduled" {{ request('status') === 'scheduled' ? 'selected' : '' }}>Scheduled</option>
+                    <option value="placed" {{ request('status') === 'placed' ? 'selected' : '' }}>Placed</option>
+                    <option value="removed" {{ request('status') === 'removed' ? 'selected' : '' }}>Removed</option>
+                    <option value="skipped" {{ request('status') === 'skipped' ? 'selected' : '' }}>Skipped</option>
+                </select>
+            </div>
+
+            <!-- Holiday Filter -->
+            <div>
+                <label for="holiday_id" class="block text-sm font-medium text-gray-700 mb-1">Holiday</label>
+                <select name="holiday_id" id="holiday_id" class="w-full border-gray-300 rounded-md">
+                    <option value="">All Holidays</option>
+                    @foreach($holidays ?? [] as $holiday)
+                        <option value="{{ $holiday->id }}" {{ request('holiday_id') == $holiday->id ? 'selected' : '' }}>
+                            {{ $holiday->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-end space-x-2">
+                <button type="submit" class="btn btn-primary flex-1">Apply</button>
+                <a href="{{ route('admin.placements.index') }}" class="btn btn-secondary">Clear</a>
             </div>
         </form>
     </div>
 
-    <!-- Placements List -->
-    <div class="bg-white shadow overflow-hidden sm:rounded-md">
-        @if($placements->count() > 0)
-            <ul class="divide-y divide-gray-200">
-                @foreach($placements as $placement)
-                    <li>
-                        <div class="px-4 py-4 flex items-center sm:px-6 hover:bg-gray-50">
-                            <div class="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">
-                                <div class="flex-1">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex-1">
-                                            <p class="text-sm font-medium text-indigo-600 truncate">
-                                                @if($placement->subscription && $placement->subscription->user)
-                                                    {{ $placement->subscription->user->name }}
-                                                @else
-                                                    Unknown Customer
-                                                @endif
-                                            </p>
-                                            <div class="mt-2 flex items-center text-sm text-gray-500">
-                                                <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                                </svg>
-                                                <p>
-                                                    @if($placement->holiday)
-                                                        {{ $placement->holiday->name }}
-                                                    @else
-                                                        Unknown Holiday
-                                                    @endif
-                                                    - {{ $placement->placement_date->format('M j, Y') }}
-                                                </p>
-                                            </div>
-                                            @if($placement->placement_address)
-                                                <div class="mt-1 flex items-center text-sm text-gray-500">
-                                                    <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    </svg>
-                                                    <p>{{ $placement->full_placement_address }}</p>
-                                                </div>
-                                            @endif
-                                        </div>
-                                        <div class="ml-4">
-                                            @php
-                                                $statusColors = [
-                                                    'scheduled' => 'bg-yellow-100 text-yellow-800',
-                                                    'placed' => 'bg-green-100 text-green-800',
-                                                    'removed' => 'bg-gray-100 text-gray-800',
-                                                    'skipped' => 'bg-red-100 text-red-800',
-                                                ];
-                                            @endphp
-                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $statusColors[$placement->status] ?? 'bg-gray-100 text-gray-800' }}">
-                                                {{ ucfirst($placement->status) }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="ml-4 flex-shrink-0 flex space-x-2">
-                                    @if($placement->status === 'scheduled')
-                                        <a href="{{ route('admin.placements.show', $placement) }}" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">
-                                            Mark Placed
-                                        </a>
-                                    @endif
-                                    <a href="{{ route('admin.placements.show', $placement) }}" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">
-                                        View
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </li>
-                @endforeach
-            </ul>
-
-            <!-- Pagination -->
-            <div class="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
-                {{ $placements->withQueryString()->links() }}
+    <!-- Bulk Actions Bar (shown when items selected) -->
+    <div id="bulk-actions-bar" class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 hidden">
+        <div class="flex items-center justify-between">
+            <span id="selected-count" class="text-sm font-medium text-indigo-900">
+                0 placements selected
+            </span>
+            <div class="flex space-x-3">
+                <button onclick="clearSelection()" class="btn btn-secondary btn-sm">
+                    Clear Selection
+                </button>
+                <button onclick="bulkDelete()" class="btn btn-danger btn-sm">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete Selected
+                </button>
             </div>
-        @else
-            <div class="text-center py-12">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v6a2 2 0 002 2h2m-2-8h10a2 2 0 012 2v6a2 2 0 01-2 2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                </svg>
-                <h3 class="mt-2 text-sm font-medium text-gray-900">No placements found</h3>
-                <p class="mt-1 text-sm text-gray-500">No flag placements match your current filters.</p>
-                <div class="mt-6">
-                    <a href="{{ route('admin.placements.create') }}"
-                       class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                        <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        Create First Placement
-                    </a>
-                </div>
+        </div>
+    </div>
+
+    <!-- Placements Table -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Holiday</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Placement Date</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                @forelse($placements as $placement)
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <input type="checkbox" class="placement-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" value="{{ $placement->id }}" onchange="updateSelection()">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ $placement->subscription->user->name ?? 'N/A' }}
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                {{ $placement->subscription->user->email ?? '' }}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-sm">
+
+                            @if(isset($placement->holiday_ids))
+                                <!-- Option 1: JSON field -->
+                                @foreach(Holiday::whereIn('id', $placement->holiday_ids)->get() as $holiday)
+                                    <span class="badge">{{ $holiday->name }}</span>
+                                @endforeach
+                            @else
+                                <!-- Option 2: Pivot table -->
+                                @foreach($placement->holidays as $holiday)
+                                    <span class="badge text-xs font-semibold rounded-full
+                                 bg-blue-100 text-blue-500">{{ $holiday->name }}</span>
+                                @endforeach
+                            @endif
+
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ $placement->placement_date ? $placement->placement_date->format('M d, Y') : 'N/A' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full
+                                @if($placement->status === 'scheduled') bg-blue-100 text-blue-800
+                                @elseif($placement->status === 'placed') bg-green-100 text-green-800
+                                @elseif($placement->status === 'removed') bg-gray-100 text-gray-800
+                                @elseif($placement->status === 'skipped') bg-yellow-100 text-yellow-800
+                                @endif">
+                                {{ ucfirst($placement->status) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div class="flex items-center justify-end space-x-3">
+                                <a href="{{ route('admin.placements.show', $placement) }}" class="text-indigo-600 hover:text-indigo-900">
+                                    View
+                                </a>
+
+                                @if($placement->status === 'scheduled')
+                                    <form action="{{ route('admin.placements.place', $placement) }}" method="POST" class="inline">
+                                        @csrf
+                                        <button type="submit" class="text-green-600 hover:text-green-900">
+                                            Mark Placed
+                                        </button>
+                                    </form>
+                                @endif
+
+                                <button onclick="deletePlacement({{ $placement->id }}, '{{ $placement->subscription->user->name ?? 'this placement' }}')" class="text-red-600 hover:text-red-900">
+                                    Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                            </svg>
+                            <p class="mt-2">No placements found</p>
+                            <a href="{{ route('admin.placements.create') }}" class="mt-3 inline-flex items-center text-indigo-600 hover:text-indigo-900">
+                                Create your first placement
+                            </a>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        @if($placements->hasPages())
+            <div class="bg-white px-4 py-3 border-t border-gray-200">
+                {{ $placements->links() }}
             </div>
         @endif
     </div>
 </div>
+
+<!-- Hidden form for single delete -->
+<form id="delete-form" method="POST" style="display: none;">
+    @csrf
+    @method('DELETE')
+</form>
+
+<!-- Hidden form for bulk delete -->
+<form id="bulk-delete-form" action="{{ route('admin.placements.bulk-delete') }}" method="POST" style="display: none;">
+    @csrf
+    <div id="bulk-placement-ids-container"></div>
+</form>
+
+@push('scripts')
+<script>
+// Track selected placements
+let selectedPlacements = new Set();
+
+// Update selection tracking
+function updateSelection() {
+    selectedPlacements.clear();
+    document.querySelectorAll('.placement-checkbox:checked').forEach(cb => {
+        selectedPlacements.add(cb.value);
+    });
+
+    // Update UI
+    const count = selectedPlacements.size;
+    const bulkBar = document.getElementById('bulk-actions-bar');
+    const countSpan = document.getElementById('selected-count');
+
+    if (count > 0) {
+        bulkBar.classList.remove('hidden');
+        countSpan.textContent = `${count} placement${count !== 1 ? 's' : ''} selected`;
+    } else {
+        bulkBar.classList.add('hidden');
+    }
+
+    // Update select-all checkbox
+    const allCheckboxes = document.querySelectorAll('.placement-checkbox');
+    const selectAllCb = document.getElementById('select-all');
+    selectAllCb.checked = allCheckboxes.length > 0 && count === allCheckboxes.length;
+}
+
+// Toggle select all
+function toggleSelectAll() {
+    const selectAll = document.getElementById('select-all').checked;
+    document.querySelectorAll('.placement-checkbox').forEach(cb => {
+        cb.checked = selectAll;
+    });
+    updateSelection();
+}
+
+// Clear selection
+function clearSelection() {
+    document.querySelectorAll('.placement-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    document.getElementById('select-all').checked = false;
+    updateSelection();
+}
+
+// Delete single placement
+function deletePlacement(placementId, customerName) {
+    if (!confirm(`Are you sure you want to delete the placement for ${customerName}? This action cannot be undone.`)) {
+        return;
+    }
+
+    const form = document.getElementById('delete-form');
+    form.action = `/admin/placements/${placementId}`;
+    form.submit();
+}
+
+// Bulk delete - FIXED
+function bulkDelete() {
+    if (selectedPlacements.size === 0) {
+        alert('Please select placements to delete');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selectedPlacements.size} placement(s)? This action cannot be undone.`)) {
+        return;
+    }
+
+    // Clear existing inputs
+    const container = document.getElementById('bulk-placement-ids-container');
+    container.innerHTML = '';
+
+    // Add each placement ID as a separate input field (array format)
+    selectedPlacements.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'placement_ids[]';  // ← Array notation
+        input.value = id;
+        container.appendChild(input);
+    });
+
+    document.getElementById('bulk-delete-form').submit();
+}
+</script>
+@endpush
 @endsection

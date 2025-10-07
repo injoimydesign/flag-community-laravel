@@ -54,12 +54,41 @@ class FlagPlacement extends Model
     }
 
     /**
-     * Get the holiday for this placement.
-     */
-    public function holiday()
-    {
-        return $this->belongsTo(Holiday::class);
-    }
+ * Get all holidays associated with this placement (many-to-many)
+ */
+public function holidays()
+{
+    return $this->belongsToMany(
+        Holiday::class,
+        'flag_placement_holiday',
+        'flag_placement_id',
+        'holiday_id'
+    )->withTimestamps();
+}
+
+/**
+ * Get the primary holiday (backward compatibility)
+ */
+public function holiday()
+{
+    return $this->belongsTo(Holiday::class);
+}
+
+/**
+ * Check if placement has a specific holiday
+ */
+public function hasHoliday($holidayId)
+{
+    return $this->holidays()->where('holidays.id', $holidayId)->exists();
+}
+
+/**
+ * Get holiday names as comma-separated string
+ */
+public function getHolidayNamesAttribute()
+{
+    return $this->holidays->pluck('name')->implode(', ');
+}
 
     /**
      * Get the flag product for this placement.
