@@ -105,128 +105,218 @@ class RouteController extends Controller
      * The holiday filter is only for VIEWING the list.
      * UPDATED: Works with pivot table for multiple holidays per placement
      */
-    public function show(Route $route, Request $request)
-    {
-        $route->load(['assignedUser']);
+     public function show(Route $route, Request $request)
+ {
+     $selectedHolidayId = $request->query('holiday_id');
 
-        // Get all holidays
-        $holidays = Holiday::active()->ordered()->get();
+     // Get customers on this route
+     $customers = $route->customers();
 
-        // Get selected holiday if provided (for filtering VIEW only)
-        $selectedHolidayId = $request->get('holiday_id');
+     // Build customer data with placements
+     $customersWithHolidays = $customers->map(function ($user) use ($route, $selectedHolidayId) {
+         if (!$user) return null;
 
-        // Get all customers on this route with their holidays
-        $customers = $route->customers();
+         $subscription = $user->activeSubscription()->first();
+         if (!$subscription) return null;
 
-        // Get customer details with their holidays
-        $customersWithHolidays = $customers->map(function ($customer) use ($selectedHolidayId) {
-            // Get active subscription for this customer
-            $subscription = Subscription::where('user_id', $customer->id)
-                ->where('status', 'active')
-                ->first();
+         // Get placements for this customer on this route
+         $placementsQuery = FlagPlacement::where('subscription_id', $subscription->id)
+             ->where('route_id', $route->id)
+             ->with(['holiday', 'flagProduct.flagType', 'flagProduct.flagSize']);
 
-            if (!$subscription) {
-                return null;
-            }
+         // Filter by holiday if specified
+         if ($selectedHolidayId) {
+             $placementsQuery->where('holiday_id', $selectedHolidayId);
+         }
 
-            // Get all holidays for this customer
-            // Check if using pivot table or direct relationship
-            $placements = FlagPlacement::where('subscription_id', $subscription->id)
-                ->where('status', 'scheduled')
-                ->with(['holiday', 'holidays']) // Load both single and multiple holidays
-                ->get();
+         $placements = $placementsQuery->get();
 
-            $allHolidays = collect();
+         // Skip if no placements (especially when filtering by holiday)
+         if ($placements->isEmpty()) return null;
 
-            foreach ($placements as $placement) {
-                // Check if using pivot table (many-to-many)
-                if (method_exists($placement, 'holidays') && $placement->holidays()->exists()) {
-                    // Using pivot table
-                    $holidaysFromPivot = $placement->holidays->map(function ($holiday) use ($placement) {
-                        return [
-                            'id' => $holiday->id,
-                            'name' => $holiday->name,
-                            'date' => $holiday->date->format('M d, Y'),
-                            'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
-                            'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
-                        ];
-                    });
-                    $allHolidays = $allHolidays->merge($holidaysFromPivot);
-                }
-                // Fallback to single holiday_id
-                elseif ($placement->holiday) {
-                    $allHolidays->push([
-                        'id' => $placement->holiday->id,
-                        'name' => $placement->holiday->name,
-                        'date' => $placement->holiday->date->format('M d, Y'),
-                        'placement_date' => $placement->placement_date ? $placement->placement_date->format('M d, Y') : null,
-                        'removal_date' => $placement->removal_date ? $placement->removal_date->format('M d, Y') : null,
-                    ]);
-                }
-            }
+         // Get unique holidays for this customer's placements
+         $holidays = $placements->map(function ($placement) {
+             return [
+                 'id' => $placement->holiday->id ?? null,
+                 'name' => $placement->holiday->name ?? 'N/A',
+                 'date' => $placement->holiday->date ? $placement->holiday->date->format('M d, Y') : null,
+             ];
+         })->unique('id')->values();
 
-            $allHolidays = $allHolidays->unique('id')->values();
+         return [
+             'user' => $user,
+             'subscription' => $subscription,
+             'placements' => $placements,
+             'holidays' => $holidays,
+         ];
+     })->filter()->values();
 
-            return [
-                'user' => $customer,
-                'holidays' => $allHolidays,
-                'has_selected_holiday' => $selectedHolidayId ?
-                    $allHolidays->contains('id', (int)$selectedHolidayId) : true,
-            ];
-        })
-        ->filter(); // Remove nulls
+     // Calculate flag counts
+     $flagCounts = [
+         'us' => 0,
+         'military' => 0,
+         'total' => 0,
+     ];
 
-        // If a holiday is selected, filter VIEW to only show customers with that holiday
-        if ($selectedHolidayId) {
-            $customersWithHolidays = $customersWithHolidays->filter(function ($item) {
-                return $item['has_selected_holiday'];
-            });
-        }
+     foreach ($customersWithHolidays as $item) {
+         foreach ($item['placements'] as $placement) {
+             $flagType = $placement->flagProduct->flagType->name ?? '';
 
-        return view('admin.routes.show', compact('route', 'customersWithHolidays', 'holidays', 'selectedHolidayId'));
-    }
+             if (stripos($flagType, 'US') !== false || stripos($flagType, 'American') !== false) {
+                 $flagCounts['us']++;
+             } elseif (stripos($flagType, 'Military') !== false ||
+                       stripos($flagType, 'Army') !== false ||
+                       stripos($flagType, 'Navy') !== false ||
+                       stripos($flagType, 'Marines') !== false ||
+                       stripos($flagType, 'Air Force') !== false) {
+                 $flagCounts['military']++;
+             }
+             $flagCounts['total']++;
+         }
+     }
+
+     // Calculate estimated time (rough estimate: 10 minutes per stop + 5 minutes per flag)
+     $totalStops = $customersWithHolidays->count();
+     $totalFlags = $flagCounts['total'];
+     $estimatedMinutes = ($totalStops * 10) + ($totalFlags * 5);
+     $estimatedTime = $estimatedMinutes > 60
+         ? round($estimatedMinutes / 60, 1) . ' hrs'
+         : $estimatedMinutes . ' min';
+
+     // Get all holidays for filter dropdown
+     //$holidays = Holiday::where('is_active', true)
+      //   ->orderBy('date')
+      //   ->get();
+
+     return view('admin.routes.show', compact(
+         'route',
+         'customersWithHolidays',
+        // 'holidays',
+         'selectedHolidayId',
+         'flagCounts',
+         'estimatedTime'
+     ));
+ }
 
     /**
      * Show the form for editing the specified route.
      */
-    public function edit(Route $route)
-    {
-        $holidays = Holiday::active()->ordered()->get();
-        $drivers = User::where('role', 'admin')->orWhere('role', 'driver')->get();
+     public function edit(Route $route)
+     {
+         // Get all users who can be assigned to routes (admin/staff users)
+         // Using first_name for ordering since User model uses first_name/last_name
+         $users = User::where('role', 'admin')
+             ->orWhere('role', 'staff')
+             ->orderBy('first_name')
+             ->orderBy('last_name')
+             ->get();
 
-        return view('admin.routes.edit', compact('route', 'holidays', 'drivers'));
-    }
+         // Alternative: If you don't have role-based filtering, get all non-customer users
+         // $users = User::where('role', '!=', 'customer')
+         //     ->orderBy('first_name')
+         //     ->orderBy('last_name')
+         //     ->get();
+
+         // Or if you want to get ALL users:
+         // $users = User::orderBy('first_name')->orderBy('last_name')->get();
+
+         return view('admin.routes.edit', compact('route', 'users'));
+     }
 
     /**
-     * Update the specified route.
-     */
-    public function update(Request $request, Route $route)
-    {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'type' => 'required|in:placement,removal',
-            'assigned_user_id' => 'nullable|exists:users,id',
-            'status' => 'required|in:planned,in_progress,completed,cancelled',
-            'notes' => 'nullable|string',
-        ]);
+ * Update the specified route in storage.
+ */
+public function update(Request $request, Route $route)
+{
+    $validator = Validator::make($request->all(), [
+        'name' => 'required|string|max:255',
+        'type' => 'required|in:placement,removal,delivery',
+        'assigned_user_id' => 'nullable|exists:users,id',
+        'status' => 'required|in:planned,in_progress,completed,cancelled',
+        'notes' => 'nullable|string',
+        'customer_order' => 'nullable|json', // Accept customer order as JSON
+    ]);
 
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
+    if ($validator->fails()) {
+        return redirect()->back()
+            ->withErrors($validator)
+            ->withInput();
+    }
+
+    $data = [
+        'name' => $request->name,
+        'type' => $request->type,
+        'assigned_user_id' => $request->assigned_user_id,
+        'status' => $request->status,
+        'notes' => $request->notes,
+    ];
+
+    // Handle customer order if provided
+    if ($request->has('customer_order')) {
+        $customerOrder = json_decode($request->customer_order, true);
+
+        // Validate that all customer IDs exist
+        if (is_array($customerOrder)) {
+            $validCustomers = User::whereIn('id', $customerOrder)
+                ->where('role', 'customer')
+                ->pluck('id')
+                ->toArray();
+
+            // Only save valid customer IDs
+            $data['customer_order'] = array_values(array_intersect($customerOrder, $validCustomers));
+        }
+    }
+
+    // Get old customer order for comparison
+    $oldCustomerOrder = $route->customer_order ?? [];
+
+    $route->update($data);
+
+    // Sync placements if customer_order changed
+    if (isset($data['customer_order'])) {
+        $newCustomerOrder = $data['customer_order'];
+
+        // Find removed customers
+        $removedCustomers = array_diff($oldCustomerOrder, $newCustomerOrder);
+        foreach ($removedCustomers as $userId) {
+            $user = User::find($userId);
+            if ($user) {
+                $subscription = $user->activeSubscription()->first();
+                if ($subscription) {
+                    // Unlink placements
+                    FlagPlacement::where('subscription_id', $subscription->id)
+                        ->where('route_id', $route->id)
+                        ->update(['route_id' => null]);
+                }
+            }
         }
 
-        $route->update([
-            'name' => $request->name,
-            'type' => $request->type,
-            'assigned_user_id' => $request->assigned_user_id,
-            'status' => $request->status,
-            'notes' => $request->notes,
-        ]);
+        // Find added customers
+        $addedCustomers = array_diff($newCustomerOrder, $oldCustomerOrder);
+        foreach ($addedCustomers as $userId) {
+            $user = User::find($userId);
+            if ($user) {
+                $subscription = $user->activeSubscription()->first();
+                if ($subscription) {
+                    // Link placements based on route type
+                    $query = FlagPlacement::where('subscription_id', $subscription->id)
+                        ->where('status', 'scheduled');
 
-        return redirect()->route('admin.routes.show', $route)
-            ->with('success', 'Route updated successfully.');
+                    if ($route->type === 'placement') {
+                        $query->whereNotNull('placement_date');
+                    } elseif ($route->type === 'removal') {
+                        $query->whereNotNull('removal_date');
+                    }
+
+                    $query->update(['route_id' => $route->id]);
+                }
+            }
+        }
     }
+
+    return redirect()->route('admin.routes.show', $route)
+        ->with('success', 'Route updated successfully.');
+}
 
     /**
      * Remove the specified route.
@@ -337,46 +427,80 @@ class RouteController extends Controller
     }
 
     /**
-     * Add placement to route.
-     */
-    public function addPlacement(Route $route, Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'user_id' => 'required|exists:users,id',
-        ]);
+ * Add placement to route and link placements.
+ */
+public function addPlacement(Route $route, Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'user_id' => 'required|exists:users,id',
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json(['error' => 'Invalid user'], 400);
-        }
-
-        $route->addCustomer($request->user_id);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Placement added to route successfully.',
-        ]);
+    if ($validator->fails()) {
+        return response()->json(['error' => 'Invalid user'], 400);
     }
 
-    /**
-     * Remove placement from route.
-     */
-    public function removePlacement(Route $route, Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'user_id' => 'required|exists:users,id',
-        ]);
+    // Add customer to route
+    $route->addCustomer($request->user_id);
 
-        if ($validator->fails()) {
-            return response()->json(['error' => 'Invalid user'], 400);
+    // Update all scheduled placements for this customer to link them to this route
+    $user = User::find($request->user_id);
+    if ($user) {
+        $subscription = $user->activeSubscription()->first();
+        if ($subscription) {
+            // Update placements based on route type
+            $query = FlagPlacement::where('subscription_id', $subscription->id)
+                ->where('status', 'scheduled');
+
+            // If it's a placement route, only link placement-type placements
+            if ($route->type === 'placement') {
+                $query->whereNotNull('placement_date');
+            } elseif ($route->type === 'removal') {
+                $query->whereNotNull('removal_date');
+            }
+
+            // Update route_id for matching placements
+            $query->update(['route_id' => $route->id]);
         }
-
-        $route->removeCustomer($request->user_id);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Placement removed from route successfully.',
-        ]);
     }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Customer and their placements added to route successfully.',
+    ]);
+}
+
+/**
+* Remove placement from route and unlink placements.
+*/
+public function removePlacement(Route $route, Request $request)
+{
+$validator = Validator::make($request->all(), [
+    'user_id' => 'required|exists:users,id',
+]);
+
+if ($validator->fails()) {
+    return response()->json(['error' => 'Invalid user'], 400);
+}
+
+// Remove customer from route
+$route->removeCustomer($request->user_id);
+
+// Unlink all placements for this customer from this route
+$user = User::find($request->user_id);
+if ($user) {
+    $subscription = $user->activeSubscription()->first();
+    if ($subscription) {
+        FlagPlacement::where('subscription_id', $subscription->id)
+            ->where('route_id', $route->id)
+            ->update(['route_id' => null]);
+    }
+}
+
+return response()->json([
+    'success' => true,
+    'message' => 'Customer and their placements removed from route successfully.',
+]);
+}
 
     /**
      * Optimize route using Google Maps API.
@@ -399,24 +523,134 @@ class RouteController extends Controller
     }
 
     /**
-     * Get turn-by-turn directions.
-     */
-    public function getDirections(Route $route, Request $request)
-    {
-        try {
-            $directions = $route->getGoogleMapsDirections();
+ * Get turn-by-turn directions with optional starting address.
+ */
+ /**
+  * Get turn-by-turn directions with optional starting address.
+  */
+ public function getDirections(Route $route, Request $request)
+ {
+     try {
+         $startAddress = $request->query('start', '15531 Gladeridge Dr, Houston, TX');
 
-            return response()->json([
-                'success' => true,
-                'directions' => $directions,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to get directions: ' . $e->getMessage()
-            ], 500);
-        }
-    }
+         \Log::info('Getting directions for route ' . $route->id . ' from: ' . $startAddress);
 
+         $customers = $route->customers();
+
+         if ($customers->isEmpty()) {
+             return response()->json([
+                 'success' => false,
+                 'error' => 'No customers on this route'
+             ], 400);
+         }
+
+         $apiKey = config('services.google.maps_api_key');
+
+         if (!$apiKey) {
+             return response()->json([
+                 'success' => false,
+                 'error' => 'Google Maps API key not configured'
+             ], 500);
+         }
+
+         // Get customer addresses
+         $addresses = $customers->map(function ($customer) {
+             return $customer->full_address;
+         })->toArray();
+
+         \Log::info('Customer addresses:', $addresses);
+
+         // Use custom start address as origin
+         $origin = $startAddress;
+         $destination = end($addresses); // Last customer
+
+         // Remove destination from addresses to use as waypoints
+         $waypoints = array_slice($addresses, 0, -1);
+
+         $params = [
+             'origin' => $origin,
+             'destination' => $destination,
+             'key' => $apiKey,
+         ];
+
+         // Add waypoints if we have them
+         if (!empty($waypoints)) {
+             $params['waypoints'] = implode('|', array_map('urlencode', $waypoints));
+         }
+
+         \Log::info('Google Maps API request params:', $params);
+
+         $response = Http::get('https://maps.googleapis.com/maps/api/directions/json', $params);
+
+         if (!$response->successful()) {
+             throw new \Exception('Google Maps API request failed with status: ' . $response->status());
+         }
+
+         $responseData = $response->json();
+
+         if (!isset($responseData['status']) || $responseData['status'] !== 'OK') {
+             $errorMessage = $responseData['error_message'] ?? $responseData['status'] ?? 'Unknown error';
+             throw new \Exception('Google Maps API error: ' . $errorMessage);
+         }
+
+         $routeData = $responseData['routes'][0];
+         $legs = $routeData['legs'];
+
+         // Format directions
+         $directions = [];
+         $totalDistance = 0;
+         $totalDuration = 0;
+
+         foreach ($legs as $legIndex => $leg) {
+             $totalDistance += $leg['distance']['value'];
+             $totalDuration += $leg['duration']['value'];
+
+             // Determine customer for this leg
+             if ($legIndex < count($customers)) {
+                 $customer = $customers[$legIndex];
+                 $customerName = $customer->name;
+                 $customerAddress = $customer->full_address;
+             } else {
+                 $customerName = 'Unknown';
+                 $customerAddress = 'Unknown';
+             }
+
+             $directions[] = [
+                 'stop_number' => $legIndex + 1,
+                 'customer_name' => $customerName,
+                 'address' => $customerAddress,
+                 'distance' => $leg['distance']['text'],
+                 'duration' => $leg['duration']['text'],
+                 'steps' => collect($leg['steps'])->map(function ($step) {
+                     return [
+                         'instruction' => strip_tags($step['html_instructions']),
+                         'distance' => $step['distance']['text'],
+                         'duration' => $step['duration']['text'],
+                     ];
+                 })->toArray(),
+             ];
+         }
+
+         return response()->json([
+             'success' => true,
+             'directions' => [
+                 'total_distance' => round($totalDistance / 1609.34, 1) . ' mi',
+                 'total_duration' => round($totalDuration / 60) . ' min',
+                 'stops' => $directions,
+                 'overview_polyline' => $routeData['overview_polyline']['points'] ?? '',
+             ],
+         ]);
+
+     } catch (\Exception $e) {
+         \Log::error('Error getting directions: ' . $e->getMessage());
+         \Log::error($e->getTraceAsString());
+
+         return response()->json([
+             'success' => false,
+             'error' => $e->getMessage()
+         ], 500);
+     }
+ }
     /**
      * Start a route.
      */

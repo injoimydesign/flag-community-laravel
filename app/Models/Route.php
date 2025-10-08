@@ -10,26 +10,41 @@ use Illuminate\Support\Facades\Http;
 
 class Route extends Model
 {
-    use HasFactory;
-
+    //use HasFactory;
+     protected $table = 'routes';
     /**
      * The attributes that are mass assignable.
      */
-    protected $fillable = [
-        'name',
-        'type',
-        'holiday_id',
-        'assigned_user_id',
-        'customer_order',
-        'status',
-        'notes',
-    ];
+    //protected $fillable = [
+    //    'name',
+    //    'type',
+    //    'holiday_id',
+    //    'assigned_user_id',
+    //    'customer_order',
+    //    'status',
+    //    'notes',
+    //];
 
     /**
      * The attributes that should be cast.
      */
+    //protected $casts = [
+    //    'customer_order' => 'array',
+    //];
+
+    protected $fillable = [
+        'name',
+        'type',
+        'status',
+        'assigned_to',
+        'customer_order',
+        'route_date',
+        'notes'
+    ];
+
     protected $casts = [
         'customer_order' => 'array',
+        'route_date' => 'date',
     ];
 
     // Relationships

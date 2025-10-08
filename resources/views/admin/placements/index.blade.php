@@ -97,107 +97,135 @@
     </div>
 
     <!-- Placements Table -->
-    <div class="bg-white shadow rounded-lg overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th scope="col" class="px-6 py-3 text-left">
-                        <input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                    </th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Holiday</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Placement Date</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                @forelse($placements as $placement)
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4">
-                            <input type="checkbox" class="placement-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" value="{{ $placement->id }}" onchange="updateSelection()">
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">
-                                {{ $placement->subscription->user->name ?? 'N/A' }}
-                            </div>
-                            <div class="text-sm text-gray-500">
-                                {{ $placement->subscription->user->email ?? '' }}
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 text-sm">
+    <div class="bg-white shadow rounded-lg">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Customer
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Holidays
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Flag Product
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Placement Date
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Route
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                </th>
+                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                </th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            @forelse($placements as $placement)
+                <tr class="hover:bg-gray-50">
+                    <!-- Customer -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">
+                            {{ $placement->subscription->user->name ?? 'N/A' }}
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            {{ $placement->subscription->user->address ?? '' }}
+                        </div>
+                    </td>
 
-                            @if(isset($placement->holiday_ids))
-                                <!-- Option 1: JSON field -->
-                                @foreach(Holiday::whereIn('id', $placement->holiday_ids)->get() as $holiday)
-                                    <span class="badge">{{ $holiday->name }}</span>
-                                @endforeach
-                            @else
-                                <!-- Option 2: Pivot table -->
-                                @foreach($placement->holidays as $holiday)
-                                    <span class="badge text-xs font-semibold rounded-full
-                                 bg-blue-100 text-blue-500">{{ $holiday->name }}</span>
-                                @endforeach
-                            @endif
+                    <!-- Holiday -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">
+                            {{ $placement->holiday->name ?? 'N/A' }}
+                        </div>
+                        <div class="text-xs text-gray-500">
+                            {{ $placement->holiday->date ? $placement->holiday->date->format('M d, Y') : '' }}
+                        </div>
+                    </td>
 
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <!-- Flag Product -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">
+                            {{ $placement->flagProduct->display_name ?? 'N/A' }}
+                        </div>
+                    </td>
+
+                    <!-- Placement Date -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">
                             {{ $placement->placement_date ? $placement->placement_date->format('M d, Y') : 'N/A' }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full
-                                @if($placement->status === 'scheduled') bg-blue-100 text-blue-800
-                                @elseif($placement->status === 'placed') bg-green-100 text-green-800
-                                @elseif($placement->status === 'removed') bg-gray-100 text-gray-800
-                                @elseif($placement->status === 'skipped') bg-yellow-100 text-yellow-800
-                                @endif">
-                                {{ ucfirst($placement->status) }}
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div class="flex items-center justify-end space-x-3">
-                                <a href="{{ route('admin.placements.show', $placement) }}" class="text-indigo-600 hover:text-indigo-900">
-                                    View
-                                </a>
-
-                                @if($placement->status === 'scheduled')
-                                    <form action="{{ route('admin.placements.place', $placement) }}" method="POST" class="inline">
-                                        @csrf
-                                        <button type="submit" class="text-green-600 hover:text-green-900">
-                                            Mark Placed
-                                        </button>
-                                    </form>
-                                @endif
-
-                                <button onclick="deletePlacement({{ $placement->id }}, '{{ $placement->subscription->user->name ?? 'this placement' }}')" class="text-red-600 hover:text-red-900">
-                                    Delete
-                                </button>
+                        </div>
+                        @if($placement->removal_date)
+                            <div class="text-xs text-gray-500">
+                                Remove: {{ $placement->removal_date->format('M d, Y') }}
                             </div>
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-                            </svg>
-                            <p class="mt-2">No placements found</p>
-                            <a href="{{ route('admin.placements.create') }}" class="mt-3 inline-flex items-center text-indigo-600 hover:text-indigo-900">
-                                Create your first placement
-                            </a>
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
+                        @endif
+                    </td>
 
-        <!-- Pagination -->
-        @if($placements->hasPages())
-            <div class="bg-white px-4 py-3 border-t border-gray-200">
-                {{ $placements->links() }}
-            </div>
-        @endif
+                    <!-- Route (NEW COLUMN) -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        @if($placement->route)
+                            <a href="{{ route('admin.routes.show', $placement->route) }}"
+                               class="text-indigo-600 hover:text-indigo-900 font-medium flex items-center">
+                                <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                </svg>
+                                <span>{{ $placement->route->name }}</span>
+                            </a>
+                            <div class="text-xs text-gray-500 mt-1">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                    {{ $placement->route->status === 'planned' ? 'bg-blue-100 text-blue-800' : '' }}
+                                    {{ $placement->route->status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                    {{ $placement->route->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}">
+                                    {{ ucfirst(str_replace('_', ' ', $placement->route->status)) }}
+                                </span>
+                            </div>
+                        @else
+                            <span class="text-gray-400 text-sm">Not assigned</span>
+                        @endif
+                    </td>
+
+                    <!-- Status -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                            {{ $placement->status === 'scheduled' ? 'bg-blue-100 text-blue-800' : '' }}
+                            {{ $placement->status === 'placed' ? 'bg-green-100 text-green-800' : '' }}
+                            {{ $placement->status === 'removed' ? 'bg-gray-100 text-gray-800' : '' }}
+                            {{ $placement->status === 'skipped' ? 'bg-yellow-100 text-yellow-800' : '' }}">
+                            {{ ucfirst($placement->status) }}
+                        </span>
+                    </td>
+
+                    <!-- Actions -->
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <a href="{{ route('admin.placements.show', $placement) }}"
+                           class="text-indigo-600 hover:text-indigo-900">
+                            View
+                        </a>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                        No placements found.
+                    </td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+@if($placements->hasPages())
+    <div class="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+        {{ $placements->links() }}
     </div>
+@endif
 </div>
 
 <!-- Hidden form for single delete -->

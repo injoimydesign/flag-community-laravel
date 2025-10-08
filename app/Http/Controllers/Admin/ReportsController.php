@@ -362,7 +362,7 @@ class ReportsController extends Controller
                     $subscription->user->full_name,
                     $subscription->user->email,
                     ucfirst($subscription->type),
-                    ' . number_format($subscription->total_amount / 100, 2),
+                    ' . 'number_format($subscription->total_amount / 100, 2),
                     ucfirst($subscription->status),
                     'Stripe', // Assuming Stripe payments
                     $subscription->user->state,
@@ -429,7 +429,7 @@ class ReportsController extends Controller
                     $customer->zip_code,
                     $customer->in_service_area ? 'Yes' : 'No',
                     $customer->subscriptions->count(),
-                    ' . number_format($totalSpent, 2),
+                    ' . 'number_format($totalSpent, 2),
                     $lastSubscription?->created_at->format('Y-m-d'),
                 ]);
             }

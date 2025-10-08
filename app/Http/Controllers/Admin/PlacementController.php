@@ -42,7 +42,15 @@ class PlacementController extends Controller
             ]);
         }
 
-        $query = FlagPlacement::with(['subscription.user', 'holiday', 'flagProduct.flagType']);
+        //$query = FlagPlacement::with(['subscription.user', 'holiday', 'flagProduct.flagType']);
+
+        $query = FlagPlacement::with([
+            'subscription.user',
+            'holiday',
+            'flagProduct.flagType',
+            'flagProduct.flagSize',
+            'route'
+        ]);
 
         // Search functionality
         if ($request->filled('search')) {

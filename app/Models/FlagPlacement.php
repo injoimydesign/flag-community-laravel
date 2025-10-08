@@ -25,6 +25,7 @@ class FlagPlacement extends Model
         'skip_reason',
         'placed_by',
         'removed_by',
+        'route_id',
         // Add placement address fields
         'placement_address',
         'placement_city',
@@ -44,6 +45,13 @@ class FlagPlacement extends Model
         'placement_longitude' => 'decimal:8',
     ];
 
+    /**
+ * Get the route this placement is assigned to.
+ */
+public function route()
+{
+    return $this->belongsTo(Route::class);
+}
 
     /**
      * Get the subscription that owns the placement.
